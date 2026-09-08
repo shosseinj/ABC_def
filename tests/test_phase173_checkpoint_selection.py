@@ -2,7 +2,7 @@ from pathlib import Path
 import hashlib
 import json
 
-from experiments.iris.phase173 import RULES, per_class_accuracy, select_checkpoint
+from experiments.iris.phase173 import RULES, margin_counts, per_class_accuracy, select_checkpoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +35,10 @@ def test_per_class_metrics_use_true_classes():
     assert per_class_accuracy([0, 1, 1, 2], [0, 1, 2, 2]) == [1.0, 0.5, 1.0]
 
 
+def test_low_margin_count_includes_all_negative_margins():
+    assert margin_counts([-0.4, -0.01, 0.05, 0.20], threshold=0.10) == (3, 2)
+
+
 def test_rules_are_generic_and_sample_independent():
     source = (ROOT / "experiments" / "iris" / "phase173.py").read_text()
     assert "119" not in source
@@ -49,6 +53,19 @@ def test_phase173_validation_only_and_same_rule_across_seeds():
     assert gate["test_set_accessed"] is False
     assert gate["test_loader_invoked"] is False
     assert gate["final_test_runs"] == []
+
+
+def test_phase173_runner_is_registered():
+    source = (ROOT / "phase_runner.py").read_text()
+    assert '17.3: "tests/test_phase173_checkpoint_selection.py"' in source
+
+
+def test_phase173_attack_diagnostics_use_explicit_validation_data_only():
+    source = (ROOT / "scripts" / "run_phase173_checkpoint_selection.py").read_text()
+    assert "evaluate_attack_data" in source
+    assert 'split="validation"' in source
+    assert "load_iris_splits" not in source
+    assert "evaluate_attack(" not in source
 
 
 def test_phase14_attack_source_remains_unchanged():

@@ -39,6 +39,11 @@ def per_class_accuracy(labels, predictions, n_classes=3):
     return [float(np.mean(predictions[labels == class_id] == class_id)) for class_id in range(n_classes)]
 
 
+def margin_counts(margins, threshold=0.10):
+    margins = np.asarray(margins, dtype=float)
+    return int(np.sum(margins < threshold)), int(np.sum(margins < 0.0))
+
+
 def pareto_epochs(rows):
     output = []
     for candidate in rows:
