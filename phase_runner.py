@@ -30,9 +30,10 @@ PHASE_TESTS = {
     17.1: "tests/test_phase171_calibration.py",
     17.2: "tests/test_phase172_diagnosis.py",
     17.3: "tests/test_phase173_checkpoint_selection.py",
+    18: "tests/test_phase18_representation_diagnosis.py",
 }
 
-NEXT = {1:2,2:3,3:4,4:5,5:6,6:7,7:8,8:9,9:10,10:11,11:12,12:13,13:14,14:14.5,14.5:15,15:15.1,15.1:15.2,15.2:15.3,15.3:16,16:17,17:17.1,17.1:17.2,17.2:17.3}
+NEXT = {1:2,2:3,3:4,4:5,5:6,6:7,7:8,8:9,9:10,10:11,11:12,12:13,13:14,14:14.5,14.5:15,15:15.1,15.1:15.2,15.2:15.3,15.3:16,16:17,17:17.1,17.1:17.2,17.2:17.3,17.3:18}
 
 def run_phase(phase):
     phase_label = f"{phase:g}" if isinstance(phase, float) else str(phase)
