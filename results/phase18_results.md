@@ -30,7 +30,7 @@ Any example CSV is documentation only and was excluded as a canonical data input
 
 ## 8. Raw representation
 
-Retained raw vectors are exact inverse transforms through the training-fitted scaler. Validation raw class-1/2 ratio was 1.1684.
+Retained raw vectors are exact canonical load_iris().data rows indexed only by train_ids/val_ids. Validation raw class-1/2 ratio was 1.1684.
 
 ## 9. Normalization
 
@@ -66,7 +66,7 @@ Three softmax probabilities were derived from each logit vector; probability JS 
 
 ## 17. Representation separability
 
-`representation_separability.csv/json` reports class means, sample SDs, centroids, mean radial spreads, centroid distance, ratio, nearest-centroid accuracy and k=3 validation purity.
+`iris_phase18_representation_separability.csv/json` reports class means, sample SDs, centroids, mean radial spreads, centroid distance, ratio, nearest-centroid accuracy and k=3 validation purity.
 
 ## 18. Linear separability
 
@@ -86,7 +86,7 @@ Both controls were traced with the same rules and were not selected after viewin
 
 ## 22. Margin analysis
 
-`margin_analysis.csv` reports class n, mean, median, sample SD, minimum, p10, negative/<0.05/<0.10 counts and class accuracy per seed/model.
+`iris_phase18_margin_analysis.csv` reports class n, mean, median, sample SD, minimum, p10, negative/<0.05/<0.10/<0.20 counts and class accuracy per seed/model. Explicit <0.20 findings (count/n): seed 42 baseline class 0: 0/10; seed 42 baseline class 1: 10/10; seed 42 baseline class 2: 6/10; seed 42 defense class 0: 0/10; seed 42 defense class 1: 10/10; seed 42 defense class 2: 6/10; seed 777 baseline class 0: 0/10; seed 777 baseline class 1: 4/10; seed 777 baseline class 2: 2/10; seed 777 defense class 0: 0/10; seed 777 defense class 1: 3/10; seed 777 defense class 2: 2/10; seed 2026 baseline class 0: 0/10; seed 2026 baseline class 1: 5/10; seed 2026 baseline class 2: 4/10; seed 2026 defense class 0: 0/10; seed 2026 defense class 1: 10/10; seed 2026 defense class 2: 9/10.
 
 ## 23. Seed comparison
 
@@ -96,9 +96,9 @@ Quantum linear separability was 0.85/0.90 for seed 42 baseline/defense and 1.00 
 
 Classical PGD source hash is recorded; epsilon 2%/10%, 20 iterations, alpha=epsilon/5 and no random start were unchanged.
 
-## 25. Attack amplification
+## 25. Attack cross-stage sensitivity
 
-Per class/model/seed, tables report timing, quantum and logit L2 movement, probability JS, both amplification ratios, and explicit safe-denominator status.
+Per class/model/seed, tables report timing, quantum and logit L2 movement, probability JS and safe-denominator ratios. These are descriptive cross-unit sensitivities: timing, expectation, logit and JS scales have different units. Nonzero drift or flips do not establish adversarial amplification, and no dimensionless amplification criterion was prespecified.
 
 ## 26. Paired attack outcomes
 
@@ -106,15 +106,15 @@ Common-clean-correct comparisons report rescued, broken, both-fail and both-robu
 
 ## 27. Answers to 14 scientific questions
 
-Q1 source: canonical sklearn. Q2 split: 90/30 validation with 30 held out. Q3 IDs: stable. Q4 raw ambiguity: present for sample 119. Q5 normalization loss: scale-dependent geometry changes but linear information retained. Q6 TTFS loss: not detected. Q7 collisions: none. Q8 quantum compression: not reproducible across seeds. Q9 head instability: plausible and seed-specific. Q10 sample 119: atypical mixed profile, not class-wide. Q11 attack amplification: measurable downstream movement. Q12 defense: not uniformly beneficial. Q13 robustness: unsupported. Q14 earliest reproducible bottleneck: raw overlap, with downstream boundary contributions; no unique cause.
+Q1 source: canonical sklearn. Q2 split: 90/30 validation with 30 held out. Q3 IDs: stable. Q4 raw ambiguity: descriptive overlap exists. Q5 normalization loss: scale-dependent geometry changes but linear information is retained. Q6 TTFS loss: not detected. Q7 collisions: none. Q8 quantum compression: not reproducible across seeds. Q9 head instability: a plausible descriptive contributor. Q10 sample 119: atypical mixed profile, not class-wide. Q11 attack response: measurable drift and flips, not proof of amplification. Q12 defense: not uniformly beneficial. Q13 robustness: unsupported. Q14 bottleneck: no unique causal bottleneck was established.
 
 ## 28. Root-cause categories
 
-Direct evidence: raw-data ambiguity—sample119 z-scores and raw overlap; TTFS information loss—not supported by equal ratios/collisions; quantum compression—not cross-seed reproducible; classifier boundary instability—quantum linear/head mismatch; adversarial amplification—nonzero movement ratios and flips; overall category—mixed, led by raw overlap plus downstream boundary effects.
+If forced into the requested taxonomy, assign F MIXED_CAUSE with qualified, non-causal evidence. A RAW_DATA_AMBIGUITY and D CLASSIFIER_BOUNDARY_INSTABILITY may be listed only as descriptive contributors. E ADVERSARIAL_AMPLIFICATION is not selected because no defensible dimensionless criterion was prespecified. Evidence is limited to n=20 class-1/class-2 validation observations, three checkpoint seeds, and one fixed split; it does not establish a unique causal bottleneck.
 
 ## 29. Phase 19 recommendation
 
-Exactly one recommendation: preregister a training-only refit of the linear head on frozen quantum features, freeze its rule using validation across all three seeds and paired IDs, and only then consider held-out evaluation.
+Preregister one classifier/head diagnostic ablation—not a remedy—fit on training representations and compared with paired IDs across additional split seeds before any held-out test access.
 
 Phase 14 SHA-256: `08b9b4669fa19a12e826c228b7f2d4712895aab13aed475df3d027fe3369ec65`
 

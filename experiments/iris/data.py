@@ -35,6 +35,20 @@ def load_iris_split_indices(seed=42, test_size=0.2, val_size=0.2):
     )
     return train_indices, val_indices, test_indices
 
+def load_iris_split_manifest_labels(seed=42, test_size=0.2, val_size=0.2):
+    """Return IDs and labels only; no feature array is returned or indexed here.
+
+    sklearn internally materializes its canonical bundle, but callers receive only
+    split membership and targets. This is the manifest-only Phase-20 boundary.
+    """
+    target = np.asarray(load_iris().target)
+    train_ids, validation_ids, hidden_ids = load_iris_split_indices(seed,test_size,val_size)
+    return {
+        "train_ids": train_ids, "validation_ids": validation_ids, "hidden_ids": hidden_ids,
+        "train_labels": target[train_ids], "validation_labels": target[validation_ids],
+        "hidden_labels": target[hidden_ids],
+    }
+
 
 def load_iris_train_validation(seed=42, test_size=0.2, val_size=0.2):
     """Return train/validation data without transforming or returning held-out data."""
@@ -53,3 +67,21 @@ def load_iris_train_validation(seed=42, test_size=0.2, val_size=0.2):
     X_train = np.clip(scaler.fit_transform(data.data[train_indices]), 0.0, 1.0)
     X_val = np.clip(scaler.transform(data.data[val_indices]), 0.0, 1.0)
     return X_train, X_val, y_train, y_val, scaler, train_indices, val_indices
+
+
+def load_iris_features_for_allowed_ids(requested_ids, allowed_ids, hidden_ids):
+    """Return canonical Iris rows only after an explicit ID-boundary check.
+
+    sklearn necessarily materializes its bundled dataset internally.  The caller,
+    however, can receive only IDs in ``allowed_ids`` and never a hidden ID.
+    """
+    requested = np.asarray(requested_ids, dtype=int)
+    allowed = set(map(int, allowed_ids)); hidden = set(map(int, hidden_ids))
+    if len(set(map(int, requested)) & hidden):
+        raise PermissionError("hidden feature ID requested")
+    if not set(map(int, requested)) <= allowed:
+        raise PermissionError("feature ID is outside the declared train/validation allowance")
+    data = load_iris()
+    if np.any(requested < 0) or np.any(requested >= len(data.target)):
+        raise IndexError("canonical Iris ID out of range")
+    return np.asarray(data.data[requested]).copy(), np.asarray(data.target[requested]).copy()

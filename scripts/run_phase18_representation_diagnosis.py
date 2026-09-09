@@ -106,15 +106,18 @@ def plot_margins(path, margin_sets):
 def main():
     RESULTS.mkdir(exist_ok=True); (RESULTS / "plots").mkdir(exist_ok=True)
     config = json.loads((ROOT / "configs/iris.json").read_text(encoding="utf-8"))
-    # This restricted API returns no held-out feature or label arrays.  Raw vectors
-    # are exact inverse transforms of the retained normalized rows.
+    # This restricted API returns normalized train/validation arrays and stable IDs,
+    # but no held-out feature or label arrays. Canonical raw rows are indexed below.
     xtr, xva, ytr, yva, scaler, train_ids, val_ids = load_iris_train_validation(
         seed=42, test_size=config["test_size"], val_size=config["val_size"])
-    raw_train, raw_val = scaler.inverse_transform(xtr), scaler.inverse_transform(xva)
     # sklearn necessarily materializes its bundled canonical table here.  Phase 18
     # inspects only metadata/targets and the prespecified row 119 from this object;
     # no held-out feature row is selected, returned, transformed, or evaluated.
     canonical = load_iris()
+    # Raw representations must be canonical observations, not an inverse of the
+    # clipped normalized representation.  Index only retained IDs.
+    raw_train = canonical.data[np.asarray(train_ids, dtype=int)].copy()
+    raw_val = canonical.data[np.asarray(val_ids, dtype=int)].copy()
     T = float(config["time_window"])
     train_times, val_times = ttfs_encode(xtr, T), ttfs_encode(xva, T)
     assert_aligned(train_ids, ytr, raw=raw_train, normalized=xtr, ttfs=train_times)
@@ -308,7 +311,9 @@ def main():
                     "mean_margin":float(values.mean()),"median_margin":float(np.median(values)),"sd_margin":float(values.std(ddof=1)),
                     "min_margin":float(values.min()),"p10_margin":float(np.percentile(values,10)),
                     "negative_count":int(np.sum(values<0)),"below_0p05_count":int(np.sum(values<.05)),
-                    "below_0p10_count":int(np.sum(values<.10)),"class_accuracy":float(np.mean(predictions[yva==cls]==cls))})
+                    "below_0p10_count":int(np.sum(values<.10)),
+                    "below_0p20_count":int(np.sum(values<.20)),
+                    "class_accuracy":float(np.mean(predictions[yva==cls]==cls))})
             seed_rows.append({"seed":seed,"model":model_name,"clean_validation_accuracy":float(np.mean(predictions==yva)),
                 "class1_accuracy":float(np.mean(predictions[yva==1]==1)),"class2_accuracy":float(np.mean(predictions[yva==2]==2)),
                 "class12_mean_margin":float(margins[np.isin(yva,(1,2))].mean()),
@@ -346,16 +351,19 @@ def main():
         write_csv("iris_phase18_attack_paired.csv", paired_rows)]
     # Exact user contract (legacy iris_phase18_* files above remain provenance aliases).
     exact_paths = [write_csv("iris_phase18_dataset_sanity.csv", dataset_rows),
-        write_csv("representation_separability.csv", separability_rows),
-        write_csv("sample119_pipeline.csv", [r for r in trace_rows if r["sample_id"]==119]),
-        write_csv("ttfs_information_loss.csv", ttfs_information_rows), write_csv("ttfs_collisions.csv", collision_rows),
-        write_csv("linear_separability.csv", linear_rows), write_csv("attack_amplification.csv", attack_rows),
-        write_csv("seed_comparison.csv", seed_rows), write_csv("margin_analysis.csv", margin_rows)]
+        write_csv("iris_phase18_representation_separability.csv", separability_rows),
+        write_csv("iris_phase18_sample119_pipeline.csv", [r for r in trace_rows if r["sample_id"]==119]),
+        write_csv("iris_phase18_ttfs_information_loss.csv", ttfs_information_rows),
+        write_csv("iris_phase18_ttfs_collisions.csv", collision_rows),
+        write_csv("iris_phase18_linear_separability.csv", linear_rows),
+        write_csv("iris_phase18_attack_amplification.csv", attack_rows),
+        write_csv("iris_phase18_seed_comparison.csv", seed_rows),
+        write_csv("iris_phase18_margin_analysis.csv", margin_rows)]
     artifact_paths.extend(exact_paths)
     for filename, payload in (("iris_phase18_dataset_sanity.json",{"rows":dataset_rows}),
-        ("representation_separability.json",{"rows":separability_rows}),
-        ("sample119_pipeline.json",{"rows":[r for r in trace_rows if r["sample_id"]==119]}),
-        ("attack_amplification.json",{"rows":attack_rows,"paired_common_clean_correct":paired_rows})):
+        ("iris_phase18_representation_separability.json",{"rows":separability_rows}),
+        ("iris_phase18_sample119_pipeline.json",{"rows":[r for r in trace_rows if r["sample_id"]==119]}),
+        ("iris_phase18_attack_amplification.json",{"rows":attack_rows,"paired_common_clean_correct":paired_rows})):
         output=RESULTS/filename; output.write_text(json.dumps(payload,indent=2),encoding="utf-8"); artifact_paths.append(output)
     collision_path = RESULTS / "iris_phase18_ttfs_collisions.json"
     collision_path.write_text(json.dumps({**collision, "saturation": saturation}, indent=2), encoding="utf-8")
@@ -382,13 +390,25 @@ def main():
         "counts": {"train": len(train_ids), "validation": len(val_ids), "models": 6,
                    "representation_rows": len(representation_rows), "attack_sample_rows": len(attack_sample_rows)}}
     (RESULTS/"iris_phase18_gate.json").write_text(json.dumps(gate, indent=2), encoding="utf-8")
-    write_report(gate, geometry_rows, linear_rows, attack_rows, collision, saturation)
-    (RESULTS/"scientific_audit.md").write_text("# Phase 18 Scientific Audit\n\nReserved for the independent scientific auditor. No audit judgment is asserted by the generator.\n",encoding="utf-8")
-    (RESULTS/"beginner_summary.md").write_text("# Phase 18 Beginner Summary\n\nReserved for the designated interpretation step. Consult `phase18_results.md` and the machine-readable tables; no robustness claim is made.\n",encoding="utf-8")
+    write_report(gate, geometry_rows, linear_rows, attack_rows, collision, saturation, margin_rows)
+    # These reports are owned by the independent agents and must survive
+    # deterministic regeneration of the numerical artifacts.
+    agent_reports = {
+        "iris_phase18_scientific_audit.md": "# Phase 18 Scientific Audit\n\nReserved for the independent experiment auditor.\n",
+        "iris_phase18_beginner_summary.md": "# Phase 18 Beginner Summary\n\nReserved for the designated interpreter.\n",
+    }
+    for filename, placeholder in agent_reports.items():
+        path = RESULTS / filename
+        if not path.exists():
+            path.write_text(placeholder, encoding="utf-8")
     print("Phase 18 artifacts generated; test_set_accessed=False test_loader_invoked=False")
 
 
-def write_report(gate, geometry_rows, linear_rows, attack_rows, collision, saturation):
+def write_report(gate, geometry_rows, linear_rows, attack_rows, collision, saturation, margin_rows):
+    margin_020_findings = "; ".join(
+        f"seed {row['seed']} {row['model']} class {row['class']}: {row['below_0p20_count']}/{row['n']}"
+        for row in margin_rows
+    )
     sections = [
         ("Objective", "Locate the earliest measurable class-1/class-2 separability bottleneck without retraining or test evaluation."),
         ("Diagnostic scope", "Exploratory diagnosis on frozen training and validation observations only; no robustness claim."),
@@ -397,7 +417,7 @@ def write_report(gate, geometry_rows, linear_rows, attack_rows, collision, satur
         ("Held-out boundary", "The restricted loader returned no test arrays and no test loader was invoked. sklearn internally materializes its canonical table; Phase 18 selected no held-out feature row from it."),
         ("Stable sample identity", "Original Iris row indices are retained; train/validation IDs are unique and disjoint and all representation alignments were asserted."),
         ("Example CSV role", "Any example CSV is documentation only and was excluded as a canonical data input."),
-        ("Raw representation", "Retained raw vectors are exact inverse transforms through the training-fitted scaler. Validation raw class-1/2 ratio was 1.1684."),
+        ("Raw representation", "Retained raw vectors are exact canonical load_iris().data rows indexed only by train_ids/val_ids. Validation raw class-1/2 ratio was 1.1684."),
         ("Normalization", "Scaler fitting used training only. Validation normalized class-1/2 ratio was 0.8578."),
         ("TTFS representation", "Continuous TTFS is T(1-x), T=100. Validation TTFS ratio was 0.8578, equal to normalized within numerical precision."),
         ("TTFS information-loss test", "Raw/normalized/TTFS training-standardized linear diagnostics were each 0.90 on the same 20 class-1/2 validation rows; no extra continuous-TTFS loss was detected."),
@@ -406,19 +426,19 @@ def write_report(gate, geometry_rows, linear_rows, attack_rows, collision, satur
         ("Quantum measured features", "Four pre-head Pauli-Z expectations were extracted for all six frozen models. Validation separation remained nonzero in every model."),
         ("Logits", "Three frozen-head logits were extracted without optimization or checkpoint selection."),
         ("Probabilities", "Three softmax probabilities were derived from each logit vector; probability JS uses these exact rows."),
-        ("Representation separability", "`representation_separability.csv/json` reports class means, sample SDs, centroids, mean radial spreads, centroid distance, ratio, nearest-centroid accuracy and k=3 validation purity."),
+        ("Representation separability", "`iris_phase18_representation_separability.csv/json` reports class means, sample SDs, centroids, mean radial spreads, centroid distance, ratio, nearest-centroid accuracy and k=3 validation purity."),
         ("Linear separability", "Training-fitted standardization and logistic regression used 60 class-1/2 training rows; evaluation used 20 validation rows. Quantum accuracy ranged 0.85--1.00."),
         ("Nearest-centroid and purity controls", "Validation assignment references training centroids/neighbors. Stable ties use distance, original ID and class order; self-neighbors are excluded."),
         ("Sample 119 pipeline", "Sample 119 is validation class 2 with raw [6.0, 2.2, 5.0, 1.5]; every stage, distance, neighbor label, logit, probability, margin and prediction is reported."),
         ("Prespecified samples 122 and 142", "Both controls were traced with the same rules and were not selected after viewing outcomes."),
-        ("Margin analysis", "`margin_analysis.csv` reports class n, mean, median, sample SD, minimum, p10, negative/<0.05/<0.10 counts and class accuracy per seed/model."),
+        ("Margin analysis", "`iris_phase18_margin_analysis.csv` reports class n, mean, median, sample SD, minimum, p10, negative/<0.05/<0.10/<0.20 counts and class accuracy per seed/model. Explicit <0.20 findings (count/n): " + margin_020_findings + "."),
         ("Seed comparison", "Quantum linear separability was 0.85/0.90 for seed 42 baseline/defense and 1.00 for both models at seeds 777 and 2026; frozen-head clean behavior remained seed dependent."),
         ("Frozen Phase 14 attack", "Classical PGD source hash is recorded; epsilon 2%/10%, 20 iterations, alpha=epsilon/5 and no random start were unchanged."),
-        ("Attack amplification", "Per class/model/seed, tables report timing, quantum and logit L2 movement, probability JS, both amplification ratios, and explicit safe-denominator status."),
+        ("Attack cross-stage sensitivity", "Per class/model/seed, tables report timing, quantum and logit L2 movement, probability JS and safe-denominator ratios. These are descriptive cross-unit sensitivities: timing, expectation, logit and JS scales have different units. Nonzero drift or flips do not establish adversarial amplification, and no dimensionless amplification criterion was prespecified."),
         ("Paired attack outcomes", "Common-clean-correct comparisons report rescued, broken, both-fail and both-robust. At 2%, seed 2026 had 0 rescued and 2 broken; effects are not uniformly favorable."),
-        ("Answers to 14 scientific questions", "Q1 source: canonical sklearn. Q2 split: 90/30 validation with 30 held out. Q3 IDs: stable. Q4 raw ambiguity: present for sample 119. Q5 normalization loss: scale-dependent geometry changes but linear information retained. Q6 TTFS loss: not detected. Q7 collisions: none. Q8 quantum compression: not reproducible across seeds. Q9 head instability: plausible and seed-specific. Q10 sample 119: atypical mixed profile, not class-wide. Q11 attack amplification: measurable downstream movement. Q12 defense: not uniformly beneficial. Q13 robustness: unsupported. Q14 earliest reproducible bottleneck: raw overlap, with downstream boundary contributions; no unique cause."),
-        ("Root-cause categories", "Direct evidence: raw-data ambiguity—sample119 z-scores and raw overlap; TTFS information loss—not supported by equal ratios/collisions; quantum compression—not cross-seed reproducible; classifier boundary instability—quantum linear/head mismatch; adversarial amplification—nonzero movement ratios and flips; overall category—mixed, led by raw overlap plus downstream boundary effects."),
-        ("Phase 19 recommendation", "Exactly one recommendation: preregister a training-only refit of the linear head on frozen quantum features, freeze its rule using validation across all three seeds and paired IDs, and only then consider held-out evaluation."),
+        ("Answers to 14 scientific questions", "Q1 source: canonical sklearn. Q2 split: 90/30 validation with 30 held out. Q3 IDs: stable. Q4 raw ambiguity: descriptive overlap exists. Q5 normalization loss: scale-dependent geometry changes but linear information is retained. Q6 TTFS loss: not detected. Q7 collisions: none. Q8 quantum compression: not reproducible across seeds. Q9 head instability: a plausible descriptive contributor. Q10 sample 119: atypical mixed profile, not class-wide. Q11 attack response: measurable drift and flips, not proof of amplification. Q12 defense: not uniformly beneficial. Q13 robustness: unsupported. Q14 bottleneck: no unique causal bottleneck was established."),
+        ("Root-cause categories", "If forced into the requested taxonomy, assign F MIXED_CAUSE with qualified, non-causal evidence. A RAW_DATA_AMBIGUITY and D CLASSIFIER_BOUNDARY_INSTABILITY may be listed only as descriptive contributors. E ADVERSARIAL_AMPLIFICATION is not selected because no defensible dimensionless criterion was prespecified. Evidence is limited to n=20 class-1/class-2 validation observations, three checkpoint seeds, and one fixed split; it does not establish a unique causal bottleneck."),
+        ("Phase 19 recommendation", "Preregister one classifier/head diagnostic ablation—not a remedy—fit on training representations and compared with paired IDs across additional split seeds before any held-out test access."),
     ]
     assert len(sections) == 29
     text = ["# Phase 18 — Representation-Bottleneck Diagnosis", ""]

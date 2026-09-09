@@ -86,11 +86,13 @@ def test_runner_uses_no_example_csv_or_test_loader_and_report_has_25_numbered_se
 
 def test_exact_required_artifact_contract_exists():
     names = ["iris_phase18_dataset_sanity.csv", "iris_phase18_dataset_sanity.json",
-        "representation_separability.csv", "representation_separability.json",
-        "sample119_pipeline.csv", "sample119_pipeline.json", "ttfs_information_loss.csv",
-        "ttfs_collisions.csv", "linear_separability.csv", "attack_amplification.csv",
-        "attack_amplification.json", "seed_comparison.csv", "margin_analysis.csv",
-        "scientific_audit.md", "beginner_summary.md", "phase18_results.md"]
+        "iris_phase18_representation_separability.csv", "iris_phase18_representation_separability.json",
+        "iris_phase18_sample119_pipeline.csv", "iris_phase18_sample119_pipeline.json",
+        "iris_phase18_ttfs_information_loss.csv", "iris_phase18_ttfs_collisions.csv",
+        "iris_phase18_linear_separability.csv", "iris_phase18_attack_amplification.csv",
+        "iris_phase18_attack_amplification.json", "iris_phase18_seed_comparison.csv",
+        "iris_phase18_margin_analysis.csv", "iris_phase18_scientific_audit.md",
+        "iris_phase18_beginner_summary.md", "phase18_results.md"]
     assert all((ROOT / "results" / name).is_file() for name in names)
     plots = ["phase18_raw_pca.png", "phase18_ttfs_pca.png", "phase18_quantum_pca.png",
              "phase18_margin_histogram.png"]
@@ -110,14 +112,46 @@ def test_dataset_sanity_source_identity_and_sample119_contract():
     assert rows["example_csv_role"]["observed"] == "excluded"
 
 
+def test_raw_rows_are_exact_canonical_rows_for_stable_ids_including_controls():
+    from sklearn.datasets import load_iris
+    canonical = load_iris().data
+    with (ROOT/"results/iris_phase18_representations.csv").open(newline="",encoding="utf-8") as handle:
+        rows=list(csv.DictReader(handle))
+    selected={(int(r["sample_id"]),r["split"]):r for r in rows if r["seed"]=="42" and r["model"]=="baseline"}
+    for sample_id in (33,15,32,119):
+        matches=[key for key in selected if key[0]==sample_id]
+        assert len(matches)==1
+        row=selected[matches[0]]
+        observed=np.array([float(row[f"raw_{i}"]) for i in range(4)])
+        assert np.array_equal(observed,canonical[sample_id])
+
+
 def test_exact_separability_and_attack_columns():
-    with (ROOT/"results/representation_separability.csv").open(newline="",encoding="utf-8") as handle:
+    with (ROOT/"results/iris_phase18_representation_separability.csv").open(newline="",encoding="utf-8") as handle:
         fields=next(csv.DictReader(handle)).keys()
     assert {"class1_mean","class1_sd","class2_mean","class2_sd","centroid_1","centroid_2",
         "spread_1","spread_2","centroid_distance_1_2","separation_1_2",
         "nearest_centroid_accuracy","k3_mean_local_purity"} <= set(fields)
-    with (ROOT/"results/attack_amplification.csv").open(newline="",encoding="utf-8") as handle:
+    with (ROOT/"results/iris_phase18_attack_amplification.csv").open(newline="",encoding="utf-8") as handle:
         fields=next(csv.DictReader(handle)).keys()
     assert {"mean_probability_js","prediction_js_per_timing_shift",
             "prediction_js_per_timing_shift_status", "prediction_JS/timing_shift_ratio",
             "prediction_JS/timing_shift_denominator_status"} <= set(fields)
+
+
+def test_margin_schema_includes_0p20_count_for_every_seed_model_class():
+    with (ROOT/"results/iris_phase18_margin_analysis.csv").open(newline="",encoding="utf-8") as handle:
+        rows=list(csv.DictReader(handle))
+    assert len(rows)==3*2*3
+    assert all("below_0p20_count" in row and row["below_0p20_count"] != "" for row in rows)
+    assert {(int(r["seed"]),r["model"],int(r["class"])) for r in rows} == {
+        (seed,model,cls) for seed in (42,777,2026) for model in ("baseline","defense") for cls in (0,1,2)}
+
+
+def test_report_uses_only_prefixed_phase18_table_references_and_mentions_0p20():
+    report=(ROOT/"results/phase18_results.md").read_text(encoding="utf-8")
+    for obsolete in ("`representation_separability", "`sample119_pipeline", "`ttfs_information_loss",
+                     "`ttfs_collisions", "`linear_separability", "`attack_amplification",
+                     "`seed_comparison", "`margin_analysis"):
+        assert obsolete not in report
+    assert "<0.20" in report
