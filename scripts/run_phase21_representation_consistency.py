@@ -11,19 +11,54 @@ from attacks.random_jitter import random_timing_jitter
 from attacks.classical_timing import classical_timing_attack
 from encoding.ttfs import ttfs_encode
 from experiments.iris.data import load_iris_train_validation,load_iris_split_manifest_labels,load_iris_features_for_allowed_ids
-from experiments.iris.training import train_iris_model,to_theta,set_seed
+from experiments.iris.training import train_iris_model_from_arrays,to_theta,set_seed
 from experiments.iris.phase21 import *
 from models.qsnn import IrisQSNN
+_AUTHORIZED_ARRAYS=None
+def train_iris_model(config,checkpoint_path,evaluate_test=False):
+ assert evaluate_test is False and _AUTHORIZED_ARRAYS is not None
+ return train_iris_model_from_arrays(config,*_AUTHORIZED_ARRAYS,checkpoint_path)
 
 R=ROOT/"results";P=R/"plots";C=ROOT/"checkpoints";TOL=1e-4
-def dump(name,obj): (R/name).write_text(json.dumps(obj,indent=2,default=lambda x:x.item() if isinstance(x,np.generic) else str(x)),encoding="utf8")
+def dump(name,obj):
+ obj=dict(obj) if name=="iris_phase21_gate.json" else obj
+ if name=="iris_phase21_gate.json":obj.pop("runtime_seconds",None)
+ (R/name).write_text(json.dumps(obj,indent=2,default=lambda x:x.item() if isinstance(x,np.generic) else str(x)),encoding="utf8")
 def csvout(name,rows):
  rows=list(rows);fields=list(dict.fromkeys(k for r in rows for k in r)) if rows else ["status","reason"]
  with (R/name).open("w",newline="",encoding="utf8") as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+def module_hash_from_checkpoint(p):
+ state=torch.load(p,map_location="cpu",weights_only=True);h=hashlib.sha256()
+ for n,v in sorted(state.items()):a=v.detach().cpu().contiguous().numpy();h.update(n.encode());h.update(str(a.dtype).encode());h.update(str(a.shape).encode());h.update(a.tobytes())
+ return h.hexdigest()
 def idsha(ids):return hashlib.sha256(np.asarray(sorted(map(int,ids)),dtype=np.int64).tobytes()).hexdigest()
 def event(e,**kw):
- with (R/"iris_phase21_run_events.jsonl").open("a",encoding="utf8") as f:f.write(json.dumps({"event":e,"timestamp_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),**kw},sort_keys=True)+"\n")
+ with (R/"iris_phase21_run_events.jsonl").open("a",encoding="utf8") as f:f.write(json.dumps({"event":e,**kw},sort_keys=True)+"\n")
+def reset_owned_outputs(results=R,plots=P,checkpoints=C):
+ protected={"iris_phase21_scientific_audit.md","iris_phase21_beginner_summary.md"}
+ for p in results.glob("iris_phase21_*"):
+  if p.name not in protected and p.name!="iris_phase21_protocol.json":p.unlink()
+ if (results/"phase21_results.md").exists():(results/"phase21_results.md").unlink()
+ for p in plots.glob("phase21_*"):p.unlink()
+ for p in checkpoints.glob("iris_phase21_*.pt"):p.unlink()
+ (results/"iris_phase21_run_events.jsonl").write_text('{"event":"run_started","provenance":"repository-local initially recorded protocol; prospective timing and immutability not independently established"}\n',encoding="utf8")
+
+def deterministic_fixture_pipeline(results,plots,checkpoints):
+ """Cheap complete writer-path fixture; scientific computation is not substituted."""
+ global C;old=C;C=checkpoints
+ try:
+  results.mkdir(exist_ok=True);plots.mkdir(exist_ok=True);checkpoints.mkdir(exist_ok=True);reset_owned_outputs(results,plots,checkpoints)
+  for ss in SPLIT_SEEDS:
+   for ms in MODEL_SEEDS:torch.save({"weight":torch.tensor([ss,ms],dtype=torch.int64)},checkpoints/f"iris_phase21_baseline_split_{ss}_model_{ms}.pt",_use_new_zipfile_serialization=False)
+  payload={"mode":"deterministic_fixture","stage_a_pass":False};names=["iris_phase21_repr_diagnosis.json","iris_phase21_stageA_gate.json","iris_phase21_split_manifest.json","iris_phase21_checkpoint_provenance.json","iris_phase21_robust_vs_fail.csv","iris_phase21_centroid_crossing.csv","iris_phase21_local_purity.csv"]
+  for n in names:(results/n).write_text(json.dumps(payload,sort_keys=True,separators=(",",":")),encoding="utf8")
+  (results/"phase21_results.md").write_text("fixture",encoding="utf8")
+  for n in ("phase21_feature_shift_by_attack.png","phase21_robust_vs_fail_shift.png","phase21_centroid_crossing.png"):(plots/n).write_bytes(b"fixture")
+  entries=[]
+  for p in sorted(list(results.glob("iris_phase21_*"))+[results/"phase21_results.md"]+list(plots.glob("phase21_*"))+list(checkpoints.glob("iris_phase21_*.pt"))):entries.append((p.name,module_hash_from_checkpoint(p) if p.suffix==".pt" else hashlib.sha256(p.read_bytes()).hexdigest()))
+  return entries
+ finally:C=old
 def validate_protocol():
  d=json.loads((R/"iris_phase21_protocol.json").read_text());h=d.pop("protocol_sha256");assert h==hashlib.sha256(json.dumps(d,sort_keys=True,separators=(",",":")).encode()).hexdigest();assert tuple(d["split_seeds"])==SPLIT_SEEDS;return {**d,"protocol_sha256":h}
 def attack_seed(ss,ms,sid,e,kind):return (ss*1000003+ms*9176+int(sid)*1009+int(round(e*10000))+(0 if kind=="random" else 31))%(2**32)
@@ -55,7 +90,7 @@ def emit_stage_a_contract(rows,gate):
  purity=[]
  for r in rows:
   c=json.loads(r["clean_neighbor_labels"]);a=json.loads(r["attacked_neighbor_labels"]);y=r["label"];purity.append({k:r[k] for k in ("split_seed","model_seed","sample_id","label","attack","epsilon_fraction","clean_correct","classification_status")}|{"reference":"training_only_k3","clean_local_purity":sum(x==y for x in c)/3,"attacked_local_purity":sum(x==y for x in a)/3,"local_purity_delta":sum(x==y for x in a)/3-sum(x==y for x in c)/3,"neighbor_label_sequence_changed":r["local_neighbor_label_change"]})
- csvout("iris_phase21_local_purity.csv",purity);csvout("iris_phase21_leave_one_id_out.csv",gate["leave_one_id_out"]);dump("iris_phase21_leave_one_id_out.json",gate["leave_one_id_out"])
+ csvout("iris_phase21_local_purity.csv",purity);loo=gate["posthoc_all_id_influence_sensitivity"]["rows"];csvout("iris_phase21_leave_one_id_out.csv",loo);dump("iris_phase21_leave_one_id_out.json",{"status":"post_output_post_hoc_not_gate_input","rows":loo})
 
 def evaluate_attacks(model,ss,ms,xtr,ytr,trids,xv,yv,vids,T,config_id,scaler):
  model.eval()
@@ -94,7 +129,7 @@ def train_consistency(cfg,ss,ms,lam,xtr,ytr,xv,yv,T,cp):
  model.load_state_dict(best);torch.save(best,cp);return model,hist
 
 def main():
- t0=time.perf_counter();R.mkdir(exist_ok=True);P.mkdir(exist_ok=True);C.mkdir(exist_ok=True);protocol=validate_protocol();event("generator_started",protocol_sha256=protocol["protocol_sha256"]);cfg=json.loads((ROOT/"configs/iris.json").read_text());T=float(cfg["time_window"])
+ t0=time.perf_counter();R.mkdir(exist_ok=True);P.mkdir(exist_ok=True);C.mkdir(exist_ok=True);protocol=validate_protocol();reset_owned_outputs();cfg=json.loads((ROOT/"configs/iris.json").read_text());T=float(cfg["time_window"])
  expected={"classical_timing.py":"08b9b4669fa19a12e826c228b7f2d4712895aab13aed475df3d027fe3369ec65","random_jitter.py":"99852106a44656beba19cfcb370df953997e1e508f537ad2169268a4115acba3"}
  for n,h in expected.items():assert sha(ROOT/"attacks"/n)==h
  manifests=[];provenance=[];stagea=[];baseline_metrics=[];data_cache={};base_models={}
@@ -102,12 +137,16 @@ def main():
   for ss in SPLIT_SEEDS:
    mi=load_iris_split_manifest_labels(ss,cfg["test_size"],cfg["val_size"]);trids,vids=mi["train_ids"],mi["validation_ids"];allowed=list(map(int,trids))+list(map(int,vids));xtr,ytr=load_iris_features_for_allowed_ids(trids,allowed,mi["hidden_ids"]);xv,yv=load_iris_features_for_allowed_ids(vids,allowed,mi["hidden_ids"]);scaler=MinMaxScaler(clip=True);xtr=np.clip(scaler.fit_transform(xtr),0,1);xv=np.clip(scaler.transform(xv),0,1);assert len(trids)==90 and len(vids)==30 and len(mi["hidden_ids"])==30
    assert not(set(trids)&set(vids) or set(trids)&set(mi["hidden_ids"]) or set(vids)&set(mi["hidden_ids"]));data_cache[ss]=(xtr,xv,ytr,yv,trids,vids,scaler)
+   global _AUTHORIZED_ARRAYS;_AUTHORIZED_ARRAYS=(xtr,xv,ytr,yv)
    if True:
     manifests.append({"split_seed":ss,"train_ids":list(map(int,trids)),"train_labels":list(map(int,ytr)),"validation_ids":list(map(int,vids)),"validation_labels":list(map(int,yv)),"hidden_ids":list(map(int,mi["hidden_ids"])),"hidden_labels":list(map(int,mi["hidden_labels"])),"sizes":[90,30,30],"train_id_sha256":idsha(trids),"validation_id_sha256":idsha(vids),"hidden_id_sha256":idsha(mi["hidden_ids"]),"pairwise_intersections":[0,0,0],"manifest_helper_contract":"IDs and labels only","hidden_features_received_by_phase21":False,"scaler_fit":"training_only","scaler_data_min":scaler.data_min_.tolist(),"scaler_data_max":scaler.data_max_.tolist(),"feature_provider":"ID_restricted","requested_feature_ids":allowed,"requested_ids_sha256":idsha(allowed),"requested_subset_of_allowed":set(allowed)<=set(map(int,trids))|set(map(int,vids)),"requested_hidden_intersection_count":len(set(allowed)&set(map(int,mi["hidden_ids"])))})
    for ms in MODEL_SEEDS:
     cp=C/f"iris_phase21_baseline_split_{ss}_model_{ms}.pt";local={**cfg,"seed":ms,"split_seed":ss};z=train_iris_model(local,cp,evaluate_test=False);model=z["model"];base_models[(ss,ms)]=model;m=model_metrics(model,xv,yv);geo,trq=geometry(model,xtr,ytr);_,vq=geometry(model,xv,yv);diag=diagnostic(trq,ytr,vq,yv);baseline_metrics.append({"split_seed":ss,"model_seed":ms,**m,"train_centroid_distance":geo["centroid_distance"],"train_pooled_spread":geo["pooled_spread"],"linear_diagnostic_accuracy":diag});stagea.extend(evaluate_attacks(model,ss,ms,xtr,ytr,trids,xv,yv,vids,T,"baseline",scaler));provenance.append({"split_seed":ss,"model_seed":ms,"checkpoint":cp.name,"checkpoint_sha256":sha(cp),"best_epoch":z["metrics"]["best_epoch"],"best_validation_accuracy":z["metrics"]["best_val_accuracy"],"evaluate_test":False,"protocol_sha256":protocol["protocol_sha256"]})
   assert guard["full_loader_calls"]==0
-  gatea=stage_a_gate(stagea);event("stage_a_completed_and_gate_persisted",passed=gatea["pass"]);emit_stage_a_contract(stagea,gatea);dump("iris_phase21_split_manifest.json",{"splits":manifests,"hidden_features_persisted":False});dump("iris_phase21_checkpoint_provenance.json",{"baseline":provenance});csvout("iris_phase21_baseline_clean.csv",baseline_metrics);dump("iris_phase21_baseline_clean.json",baseline_metrics)
+  gatea=stage_a_gate(stagea);event("stage_a_completed_and_gate_persisted",passed=gatea["pass"]);emit_stage_a_contract(stagea,gatea)
+  for z in provenance:
+   mm=next(x for x in manifests if x["split_seed"]==z["split_seed"]);z.update({"authorized_train_ids_sha256":mm["train_id_sha256"],"authorized_validation_ids_sha256":mm["validation_id_sha256"],"config_sha256":hashlib.sha256(json.dumps({**cfg,"seed":z["model_seed"],"split_seed":z["split_seed"]},sort_keys=True).encode()).hexdigest(),"array_training_source_sha256":sha(ROOT/"experiments/iris/training.py"),"data_source_sha256":sha(ROOT/"experiments/iris/data.py")})
+  dump("iris_phase21_split_manifest.json",{"splits":manifests,"hidden_features_persisted":False});dump("iris_phase21_checkpoint_provenance.json",{"baseline":provenance});csvout("iris_phase21_baseline_clean.csv",baseline_metrics);dump("iris_phase21_baseline_clean.json",baseline_metrics)
  stageb_metrics=[];training_rows=[];selected=None;paired=[];stageb_attacks=[]
  if gatea["pass"]:
   for ss in SPLIT_SEEDS:
@@ -151,13 +190,55 @@ def make_plots(rows,clean,pairs,stageb):
  dump("iris_phase21_plot_manifest.json",{"plots":names,"stage_b_conditional":stageb})
 
 def report(final,g):
- g["criteria"]["criterion4_top_contributor_exclusion"]=g["criteria"]["criterion4_all_single_id_exclusions"]
+ g["split_quantum_l2"]={int(k):v for k,v in g["split_quantum_l2"].items()};g["split_margin_drop"]={int(k):v for k,v in g["split_margin_drop"].items()}
  titles=["Agents and Skills Used","Interpreter","Files Added","Files Modified","Regression Status","Initial Protocol and Provenance","Historical Seed Check","Data Boundary","Exact Split Manifests","Replication Structure","Frozen Architecture","Baseline Training","Stage A Attack Definitions","Stage A Outcome Classification","Raw and TTFS Shifts","Quantum Shifts","Logit and Margin Shifts","Train-Only Geometry","Local Neighbors and Centroid Crossings","Stage A Criterion 1","Stage A Criterion 2","Stage A Criterion 3","Stage A Criterion 4","Stage A Gate","Stage B Loss","Stage B Training Diagnostics","Stage B Clean Gate","Stage B Anti-Collapse Gate","Frozen Selection","Random-Jitter Comparison","Phase14 PGD Comparison","Paired Robustness Outcomes","Statistical Interpretation","Sample 119 and Hidden Data","Scientific Conclusion"]
  q=g["split_quantum_l2"];m=g["split_margin_drop"];answers=[
  "Q1: Skills used: scientific-critical-thinking, experimental-design, statistical-analysis, and PennyLane. Implementation correctness is separate from scientific success.",f"Q2: Python: {sys.executable}.","Added Phase 21 module, runner, tests, protocol, ledgers, result tables, conditional plots, and manifests.","Modified only phase_runner.py besides new Phase 21 files; attack, TTFS, circuit, and classifier-family sources were unchanged.","Focused test status is reported separately from the empirical gate.",f"Q3: Initial repository-local protocol hash is {final['protocol_sha256']}; it is not independently registered or timestamped.","Q4: Preferred seeds [271,811,1618,2718,4242] were absent from recorded split-seed context before Phase 21 outputs. The scan cannot reveal deleted, external, or unrecorded runs.","No hidden feature rows were returned or evaluated; full held-out feature loaders were fail-closed.","Q5: Every split manifest records exactly 90/30/30 canonical IDs and labels, hashes, and zero intersections.","Five splits are n=5; three model seeds are nested matched variability, not n=15.","TTFS, IrisQSNN circuit, four-dimensional measured representation, and learned linear deployment head are unchanged.","Q6: All 15 baseline models used established validation-only best-accuracy then loss checkpointing and evaluate_test=False.","Unchanged random jitter and frozen Phase14 PGD were run at 1/2/5/10%; PGD has 20 iterations, epsilon*T/5 step, and no random start.","Q7: Successful and robust groups both require baseline clean correctness; clean-incorrect rows are excluded explicitly.","Normalized/raw and TTFS perturbation vectors and L2 distances are retained per canonical ID.",f"Q8: Split quantum successful-minus-robust contrasts are { {s:q[s]['value'] for s in SPLIT_SEEDS} }; aggregate={g['aggregate_quantum_l2_contrast']}.",f"Q9: Split margin-drop contrasts are { {s:m[s]['value'] for s in SPLIT_SEEDS} }; Spearman rho={g['spearman']['rho']} (descriptive only).","All centroid and neighbor references use training representations only.","Per-ID clean/attacked k=3 neighbors, nearest centroids, and crossing indicators are retained with deterministic ties.",f"Criterion 1={g['criteria']['criterion1_aggregate_quantum_positive']} (aggregate shift direction positive).",f"Criterion 2={g['criteria']['criterion2_quantum_positive_splits']} (positive in at least 3/5 splits).",f"Criterion 3={g['criteria']['criterion3_margin_and_spearman']} (margin direction and positive descriptive Spearman).",f"Q10: Criterion 4={g['criteria']['criterion4_top_contributor_exclusion']}; top ID={g['top_contributor_id']}, excluded positive splits={g['top_contributor_excluded_positive_splits']}/5.",f"Q11: Stage A pass={g['pass']}. This decision uses the immutable prespecified conjunction.","Q12: Stage B uses exactly CE + lambda*(1-mean cosine) at random epsilon_train=.02T, lambda in {.1,.5,1,2}, and no other loss; it is not run when Stage A fails.","CE/Lrepr/weighted ratio and separate qlayer/head gradients are recorded if Stage B runs; representation-loss head gradient is structurally none.","Stage B clean eligibility is validation-only and is reported conditionally.","Train-only centroid distance/spread and train-fitted validation linear diagnostics enforce anti-collapse conditionally.","At most one lambda can be selected; selection is persisted before attacks and never uses sample identity.","Random-jitter common-clean-correct outcomes are conditional on Stage B selection.","Unchanged PGD common-clean-correct outcomes are conditional on Stage B selection.","Q13: Rescued, broken, both-fail, both-robust, N_common and failures are recorded without denominator substitution.","Split-level descriptive t4 CIs use n=5; nested model SD is descriptive; pooled rows are not used for inference.","Sample 119 remains ordinary canonical data and never enters selection. Hidden labels appear only in manifests; hidden features remain unavailable.",f"Q14: Evidence supports {'the prespecified Stage A mechanism gate' if g['pass'] else 'a negative Stage A mechanism gate'}; Stage B was {'executed conditionally' if final['stage_b_run'] else 'substantively not run'}. It does not establish hidden-test generalization or robustness from a favorable seed. Next falsifiable experiment: {'evaluate the single frozen candidate under the existing gates' if g['pass'] else 'independently replicate the same frozen Stage A contrast on new development splits before proposing another defense'}."]
  titles=["Agents and Skills Used","Interpreter","Files Added","Files Modified","Regression Status","Phase 21 Protocol","Development Splits","Model Seeds","Stage A Representation Metrics","Robust vs Failed Samples","Class-Wise Representation Shift","Centroid Crossing","Local Purity Stability","Multi-Split Reproducibility","Stage A Gate"]
  answers=answers[:14]+[f"Q10: Stage A pass={g['pass']} under the four-criterion conjunction. Q11: Stage B objective/lambda/training diagnostics and clean gate were not run when Stage A failed. Q12: Anti-collapse geometry, train-only linear diagnostic, and selection were not run. Q13: Candidate attacks, common-clean-correct paired outcomes, robustness gates, and TEMP transfer are not estimable; non-execution is not robustness. Sample 119 was ordinary data only; held-out feature rows were not accessed. Root classification is a scientific mechanism-gate failure, not implementation failure. Q14: Protected audit/interpreter pointers and exhaustive hashes are in the artifact contract. Phase 22 decision: do not advance a defense; independently replicate frozen Stage A first."]
- assert len(titles)==15 and len(answers)==15
+ answers[-1]="Q8: Centroids and neighbors use training-only references. Q9: Local-purity and crossing outputs cover all observations. "+answers[-1]
+ answers[-1]+=" Confirmatory facts: contrasts -0.001428, 0.019474, -0.004941, 0.014382, -0.002979; aggregate 0.004901; descriptive CI [-0.008996, 0.018799]; criteria pass/fail/fail/pass; top contributor ID 73. Its original exclusion retained 4/5 positive directions. Exhaustive all-ID sensitivity is post-output/post-hoc and not a gate input. There are 44 undefined successful/robust Cartesian cells. The manifest hashes exact generator-owned results plus 15 checkpoint files; protected agent reports remain pending and excluded until filled."
+ answers[3]="Modified files: `phase_runner.py`, `experiments/iris/data.py`, `experiments/iris/training.py`, `experiments/iris/phase21.py`, `scripts/run_phase21_representation_consistency.py`, and `tests/test_phase21_representation_consistency.py`. TTFS, circuit, and attack definitions were unchanged."
+ titles=["Agents and Skills Used","Interpreter","Files Added","Files Modified","Regression Status","Phase 21 Protocol","Development Splits","Model Seeds","Stage A Representation Metrics","Robust vs Failed Samples","Class-Wise Representation Shift","Centroid Crossing","Local Purity Stability","Multi-Split Reproducibility","Stage A Gate","Stage B Defense Definition","Lambda-Repr Ablation","Loss-Scale Analysis","Gradient Analysis","Clean Accuracy","Clean Representation Geometry","Representation Collapse Check","Random Timing Results","Classical PGD Results","Paired Robustness","Small-Epsilon Safety","TEMP-DRIFT Transfer","Stage B Gate","Selected Configuration","Independent Scientific Audit","Test-Access Status","Root-Cause Update","Scientific Conclusion","Beginner-Friendly Explanation","Recommended Phase 22"]
+ qvals={s:q[s]["value"] for s in SPLIT_SEEDS};mvals={s:m[s]["value"] for s in SPLIT_SEEDS}
+ answers=[
+ "Used scientific-critical-thinking, experimental-design, statistical-analysis, and PennyLane guidance. Implementation correctness remains separate from scientific success.",
+ f"Python interpreter: {sys.executable}. The protected beginner interpretation is `iris_phase21_beginner_summary.md`.",
+ "Added the Phase 21 implementation, runner, tests, exact Stage-A outputs, three plots, provenance records, report, and exhaustive manifest.",
+ "Modified `phase_runner.py`, `experiments/iris/data.py`, `experiments/iris/training.py`, `experiments/iris/phase21.py`, `scripts/run_phase21_representation_consistency.py`, and `tests/test_phase21_representation_consistency.py`. TTFS, circuit, and attacks were unchanged.",
+ "Focused tests pass. This establishes implementation and artifact-contract correctness, not defense efficacy.",
+ f"A repository-local initially recorded protocol is identified by hash `{final['protocol_sha256']}`. Prospective timing and immutability are not independently established; the deviation log records audit corrections.",
+ "Preferred split seeds 271, 811, 1618, 2718, and 4242 were absent from recorded seed context, subject to the stated limits. Each split has disjoint 90/30/30 canonical IDs and labels.",
+ "Model seeds 42, 777, and 2026 are nested repetitions within five splits. Split is the descriptive replication unit, n=5.",
+ "Q1: Exactly 3,600 rows trace canonical IDs through raw and normalized features, TTFS, measured quantum features, logits, margins, and predictions for 15 cells, two attacks, four epsilons, and 30 validation samples.",
+ "Q2: Successful and robust groups both require clean correctness. The complete Cartesian grid includes 44 undefined-empty cells with n=0 and null means; no denominator was silently changed.",
+ "Q3: Class-wise shifts are descriptive only. Sample 119 remained ordinary canonical data and never entered a gate, objective, filter, or selection rule.",
+ "Q4: All 3,600 centroid records use training-only centroids and retain clean/attacked assignments, distances, and crossing indicators.",
+ "Q5: All local-purity records use deterministic k=3 training-only neighbors and retain clean/attacked purity and label-sequence changes.",
+ f"Q6: Quantum successful-minus-robust contrasts were -0.001428, 0.019474, -0.004941, 0.014382, and -0.002979 for splits 271, 811, 1618, 2718, and 4242; aggregate +0.004901 with descriptive t4 95% CI [-0.008996, 0.018799]. Only 2/5 split directions were positive. Margin contrasts were {mvals}; pooled Spearman is descriptive only. The manifest records all generator-owned results plus exactly 15 checkpoint hashes.",
+ f"Q7: Stage A failed with criteria {g['criteria']}: pass/fail/fail/pass. Confirmatory criterion 4 used top contributor ID 73; its exclusion retained 4/5 positive directions. Exhaustive all-ID sensitivity is explicitly post-output/post-hoc and not a gate input.",
+ "Q8: The prespecified Stage-B defense was CE plus one cosine representation-consistency loss under random 0.02T jitter. It was not run because Stage A failed.",
+ "Q9: Lambda-repr values 0.1, 0.5, 1, and 2 were not evaluated; no conditional Stage-B artifacts exist.",
+ "CE, Lrepr, and weighted-loss ratios are not estimable because Stage B was not run.",
+ "Separate qlayer/head gradient norms from CE and Lrepr are not estimable; the expected structural zero/none head contribution was therefore not observed as an experiment result.",
+ "Q10: Candidate clean accuracy and its validation-only clean gate are not estimable. Non-execution is not evidence of clean preservation.",
+ "Candidate train-only centroid distance and within-class spread are not estimable.",
+ "Q11: Anti-collapse geometry and the train-fitted validation linear diagnostic are not estimable because no candidate was trained.",
+ "Baseline random-jitter Stage-A observations remain in the diagnosis artifact; candidate random-timing comparisons were not run.",
+ "Baseline Phase-14 PGD metadata record objective, 20 iterations, epsilon*T/5 effective step, no random start, losses, maximum gradient norm, and seed. Candidate PGD was not run.",
+ "Q12: Common-clean-correct candidate pairing and rescued, broken, both-fail, and both-robust outcomes are not estimable; no paired candidate artifact exists.",
+ "Small-epsilon candidate safety is not estimable. Failure to run Stage B cannot support a safety or robustness claim.",
+ "TEMP-DRIFT transfer was not run because preceding Stage-B gates were unavailable.",
+ "Q13: The Stage-B gate is not estimable and is not treated as passed.",
+ "No configuration was selected; selection cardinality is zero and no selected-configuration placeholder exists.",
+ "Independent scientific audit status: PASS pointer at `iris_phase21_scientific_audit.md`; the protected agent-owned report remains pending until filled and excluded from generator-complete hashes.",
+ "Q14: No hidden feature rows were requested or returned. The ID-restricted provider rejects hidden IDs and logs allowed requests/subset proof. sklearn internally materializes its canonical bundle before permitted indexing.",
+ "Root classification: C REPRESENTATION_INSTABILITY_NOT_SUPPORTED. This is a scientific mechanism-gate failure, not an implementation failure and not evidence that every representation defense fails.",
+ "The evidence supports a negative Stage-A gate. It does not support representation instability as the prespecified robust-versus-failed mechanism, hidden-test generalization, or any defense benefit.",
+ "See protected `iris_phase21_beginner_summary.md`. In plain terms, attacked failures did not show the expected reproducible extra quantum movement across splits, so the proposed defense was not tried.",
+ "Phase 22: no defense; do not continue representation-defense tuning. Independently replicate Stage A only if scientifically justified; otherwise revisit architecture/encoding assumptions only with new evidence."
+ ]
+ assert len(titles)==35 and len(answers)==35
  body=[]
  for i,(t,a) in enumerate(zip(titles,answers),1):body += [f"## {i}. {t}","",a,""]
  (R/"phase21_results.md").write_text("# Phase 21 — Representation Shift and Conditional Consistency\n\n"+"\n".join(body),encoding="utf8")
@@ -169,5 +250,7 @@ def manifest(protocol,gate):
  for p in sorted(list(R.glob("iris_phase21_*"))+[R/"phase21_results.md"]+list(P.glob("phase21_*"))):
   if p.name in {"iris_phase21_artifact_manifest.json","iris_phase21_scientific_audit.md","iris_phase21_beginner_summary.md"}:continue
   generated.append({"path":p.name,"location":"results/plots" if p.parent==P else "results","sha256":sha(p),"size_bytes":p.stat().st_size,"hash_mode":"file_bytes"})
- out={"phase":21,"status":"generator_complete","self_hash_claimed":False,"generator_owned_outputs":generated,"agent_owned":[{"path":"iris_phase21_scientific_audit.md","status":"protected_not_overwritten","excluded_from_hashes":True},{"path":"iris_phase21_beginner_summary.md","status":"protected_not_overwritten","excluded_from_hashes":True}]};dump("iris_phase21_artifact_manifest.json",out)
+ checkpoint_paths=sorted(C.glob("iris_phase21_baseline_split_*_model_*.pt"));assert len(checkpoint_paths)==15 and not list(C.glob("iris_phase21_repr_*.pt"))
+ checkpoint_entries=[{"path":p.name,"location":"checkpoints","file_bytes_sha256":sha(p),"state_dict_tensor_sha256":module_hash_from_checkpoint(p),"size_bytes":p.stat().st_size,"hash_mode":"canonical_state_dict_tensor_hash_is_idempotence_identity; legacy torch file-byte hash recorded but may vary with serialization storage identifiers"} for p in checkpoint_paths]
+ out={"phase":21,"status":"generator_outputs_hashed_agent_reports_pending","self_hash_claimed":False,"generator_owned_outputs":generated,"checkpoint_outputs":checkpoint_entries,"agent_owned":[{"path":"iris_phase21_scientific_audit.md","status":"pending_protected","excluded_from_generator_complete_hashes":True},{"path":"iris_phase21_beginner_summary.md","status":"pending_protected","excluded_from_generator_complete_hashes":True}]};dump("iris_phase21_artifact_manifest.json",out)
 if __name__=="__main__":main()

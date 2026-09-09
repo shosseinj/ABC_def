@@ -326,3 +326,16 @@ def train_iris_model(config, checkpoint_path=None, evaluate_test=True, epoch_obs
         "validation_metrics": validation_metrics,
         "test_evaluated": bool(evaluate_test),
     }
+
+def train_iris_model_from_arrays(config,X_train,X_validation,y_train,y_validation,checkpoint_path=None):
+    """Established CE baseline protocol using authorized arrays; invokes no loader."""
+    set_seed(int(config["seed"]));trX=to_theta(X_train,float(config["time_window"]));vaX=to_theta(X_validation,float(config["time_window"]));ty=torch.tensor(y_train,dtype=torch.long);vy=torch.tensor(y_validation,dtype=torch.long)
+    model=IrisQSNN(int(config["n_qubits"]),int(config["n_layers"]),int(config["n_classes"]));opt=torch.optim.Adam(model.parameters(),lr=float(config["learning_rate"]));key=None;best=None;history=[]
+    for epoch in range(1,int(config["epochs"])+1):
+        model.train();opt.zero_grad();loss=F.cross_entropy(model(trX),ty);loss.backward();opt.step();model.eval()
+        with torch.no_grad():z=model(vaX);vce=float(F.cross_entropy(z,vy));vacc=float((z.argmax(1)==vy).float().mean())
+        history.append((epoch,float(loss.detach()),vce,vacc));k=(-vacc,vce,epoch)
+        if key is None or k<key:key=k;best={n:v.detach().cpu().clone() for n,v in model.state_dict().items()}
+    model.load_state_dict(best)
+    if checkpoint_path is not None:checkpoint_path.parent.mkdir(exist_ok=True);torch.save(best,checkpoint_path,_use_new_zipfile_serialization=False)
+    return {"model":model,"history":history,"metrics":{"best_val_accuracy":-key[0],"best_val_loss":key[1],"best_epoch":key[2]},"test_evaluated":False,"array_training":True}

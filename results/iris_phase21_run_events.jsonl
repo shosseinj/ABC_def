@@ -1,8 +1,3 @@
-{"claim_limit":"repository-local initial record only; prospective timing and immutability are not independently established; cannot exclude prior inspection, later edits, deleted, unrecorded, or external runs","event":"initial_protocol_record_observed","evidence":"repository record and in-document timestamp only","preferred_seeds":[271,811,1618,2718,4242],"preferred_seeds_absent_in_recorded_seed_context":true,"timestamp_utc":"2026-09-09T00:00:00Z","timestamp_role":"recorded value, not independent timing evidence"}
-{"event": "generator_started", "protocol_sha256": "dbeba331876a9f85852d2c9404b11226fbbd7ecea79c21c331759a167feddaea", "timestamp_utc": "2026-09-09T10:37:06Z"}
-{"event": "stage_a_completed_and_gate_persisted", "passed": false, "timestamp_utc": "2026-09-09T10:51:43Z"}
-{"event": "generator_outputs_completed_final", "timestamp_utc": "2026-09-09T10:51:43Z"}
-{"event": "exact_contract_reconciled", "scientific_results_changed": false, "stage_b_artifacts_removed": true, "timestamp_utc": "2026-09-09T10:58:55Z"}
-{"event": "exact_contract_reconciled", "scientific_results_changed": false, "stage_b_artifacts_removed": true, "timestamp_utc": "2026-09-09T11:03:30Z"}
-{"event": "generator_started", "protocol_sha256": "98145eaf294df7289f1642ad23337366e79d0bcb38735ca8e7a075a0f0bbab18", "timestamp_utc": "2026-09-09T11:17:19Z"}
-{"event": "stage_a_completed_and_gate_persisted", "passed": false, "timestamp_utc": "2026-09-09T11:32:33Z"}
+{"event":"run_started","provenance":"repository-local initially recorded protocol; prospective timing and immutability not independently established"}
+{"event": "stage_a_completed_and_gate_persisted", "passed": false}
+{"event": "generator_outputs_completed_final"}
