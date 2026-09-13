@@ -74,46 +74,89 @@ Supporting validation artifacts:
 - `results/clean_qsnn_380_epoch_test.csv`
 - `results/clean_qsnn_380_epoch_history.csv`
 
-## Current Research Status
+# TEMP-DRIFT Attack Framework
 
-### Clean Baseline
+## TEMP-DRIFT Introduction
 
-Completed and frozen.
+TEMP-DRIFT is the proposed derivative-free timing-domain attack for the QSNN. It perturbs TTFS spike times under the same epsilon timing budget, valid spike-time bounds `[0,T]`, and exact feasibility constraints used in evaluation. Its search jointly considers attack success or proximity to the decision boundary and quantum-state drift measured by `1 - Fidelity`.
 
-### Attack
+The final Adaptive TEMP-DRIFT uses:
 
-Current attack methods include:
-
-- Classical Timing PGD as the main baseline
-- TEMP-DRIFT as the proposed non-gradient attack
-- Gradient TEMP-DRIFT retained as a separate experimental variant
-
-The improved TEMP-DRIFT uses:
-
-- Coordinate-2-guided search
-- Adaptive elite refinement
+- Coordinate-2 sensitivity guidance
+- Exploration of all timing coordinates
+- Iterative elite refinement
 - Rank-balanced fidelity/margin scoring
 - Boundary-crossing priority
 - Differential mutation
-- Exact feasibility constraints
+- Exact feasibility checking
 
-### Defense
+Coordinate 2 was identified by the earlier seed-sensitivity analysis and guides the search, but Adaptive TEMP-DRIFT continues to explore every timing coordinate.
 
-Defense development is provisional and has not been finalized.
+## Classical Timing PGD Baseline
 
-## Next Step
+Classical Timing PGD is the main baseline. It is a white-box, gradient-based attack that directly maximizes classification loss in spike-time space under the same epsilon constraints while keeping the victim QSNN frozen. It provides a strong classifier-oriented baseline against which TEMP-DRIFT is compared.
 
-The next experiment must use the exact five frozen 380-epoch checkpoints as identical victim models for:
+## Gradient Adaptive TEMP-DRIFT
 
-- Classical Timing PGD
-- TEMP-DRIFT
+Gradient Adaptive TEMP-DRIFT is an experimental gradient-guided extension that preserves the adaptive TEMP-DRIFT structure, computes gradients directly with respect to timing perturbations, and uses a joint decision-boundary/quantum-drift objective. It does not update model parameters and retains all epsilon and exact feasibility constraints. The variant was evaluated experimentally but was not selected as the final main method.
 
-Evaluate at `epsilon = 2%, 5%, 10%` and report:
+## Final Validation Comparison of Gradient Variant
 
-- ASR
-- `1 - Fidelity`
-- Trace Distance
-- Exact feasibility
-- Multi-seed mean ± sample SD
+The comparison used the frozen clean QSNN checkpoints and paired common clean-correct development/validation samples.
 
-Do not modify the clean model, training protocol, or checkpoints before this comparison.
+| ε   | PGD ASR | Adaptive TEMP ASR | Gradient TEMP ASR |  PGD 1-F | Adaptive TEMP 1-F | Gradient TEMP 1-F |
+| --- | ------: | ----------------: | ----------------: | -------: | ----------------: | ----------------: |
+| 2%  |  0.0563 |            0.0563 |            0.0563 | 0.000987 |          0.000970 |          0.000976 |
+| 5%  |  0.1338 |            0.1268 |            0.1268 | 0.006120 |          0.005630 |          0.005603 |
+| 10% |  0.2394 |            0.2535 |            0.2465 | 0.024143 |          0.021200 |          0.020973 |
+
+- Gradient TEMP unique successes: `0` at every epsilon
+- Exact feasibility: `100%`
+- Gradient TEMP average runtime: `2.263 s/sample`
+- Gradient TEMP QNode evaluations: `76,530`
+- Gradient TEMP runtime: approximately `1018.3 s`
+
+`GRADIENT ADAPTIVE TEMP-DRIFT: NOT BENEFICIAL`
+
+The gradient variant provided no ASR improvement over Adaptive TEMP-DRIFT, no consistent quantum-drift improvement, and no unique successful attacks, while requiring substantially more computation.
+
+`Adaptive TEMP-DRIFT remains the main proposed attack.`
+
+## Final Held-Out Attack Comparison
+
+The final frozen-model held-out comparison evaluated Classical Timing PGD and Adaptive TEMP-DRIFT.
+
+| ε   | PGD ASR mean ± SD | TEMP-DRIFT ASR mean ± SD |   PGD 1-F mean ± SD |  TEMP 1-F mean ± SD | PGD Trace mean ± SD | TEMP Trace mean ± SD |
+| --- | ----------------: | -----------------------: | ------------------: | ------------------: | ------------------: | -------------------: |
+| 2%  |   0.0864 ± 0.0622 |          0.0864 ± 0.0622 | 0.000987 ± 0.000000 | 0.000980 ± 0.000006 | 0.031409 ± 0.000000 |  0.031309 ± 0.000094 |
+| 5%  |   0.1918 ± 0.0828 |          0.1918 ± 0.0828 | 0.006109 ± 0.000039 | 0.005766 ± 0.000103 | 0.078146 ± 0.000259 |  0.075813 ± 0.000727 |
+| 10% |   0.3285 ± 0.0967 |          0.3354 ± 0.1023 | 0.024069 ± 0.000276 | 0.021953 ± 0.000473 | 0.155087 ± 0.000937 |  0.147765 ± 0.001687 |
+
+Paired results on `137` common clean-correct samples:
+
+- At 2%: PGD-only `0`, TEMP-only `0`
+- At 5%: PGD-only `0`, TEMP-only `0`
+- At 10%: PGD-only `0`, TEMP-only `1`
+- TEMP-DRIFT matched every PGD success and added one unique success at 10%
+
+TEMP-DRIFT was competitive with PGD in ASR: the methods tied at 2% and 5%, while TEMP-DRIFT was slightly higher at 10%. PGD retained higher quantum drift in both `1 - Fidelity` and Trace Distance. Exact feasibility was `100%`.
+
+`TEMP-DRIFT: COMPETITIVE WITH CLASSICAL PGD`
+
+## Current Method Selection
+
+- Clean QSNN protocol: FROZEN
+- Main baseline: Classical Timing PGD
+- Main proposed method: Adaptive TEMP-DRIFT
+- Gradient Adaptive TEMP-DRIFT: rejected as non-beneficial
+- Quantum-refined TEMP-DRIFT: rejected as non-beneficial
+- Defense: still provisional
+
+## Result Artifacts
+
+- `results/final_attack_comparison.json`
+- `results/final_attack_comparison.csv`
+- `results/final_attack_samples.csv`
+- `results/final_attack_report.md`
+- `results/gradient_adaptive_temp_drift_validation.json`
+- `results/quantum_refined_temp_drift_validation.json`

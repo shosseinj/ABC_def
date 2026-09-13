@@ -410,6 +410,209 @@ def temp_drift_adaptive(
     }
 
 
+def temp_drift_gradient_adaptive(
+    model, spike_times, true_label, epsilon, tau, T=100.0, steps=50,
+    candidates=32, seed=42, sensitive_coordinate=2, retained=12,
+    progress_context=None,
+):
+    """Adaptive TEMP initialization followed by projected spike-time gradients."""
+    clean = np.asarray(spike_times, dtype=float)
+    total_queries = int(steps * candidates)
+    if clean.ndim != 1 or clean.size < 2 or total_queries != 1600:
+        raise ValueError("Gradient Adaptive TEMP-DRIFT requires 1600 candidates.")
+    if T <= 0 or epsilon < 0 or tau < 0 or retained != 12:
+        raise ValueError("Invalid Gradient Adaptive TEMP-DRIFT parameters.")
+    if not np.all(np.isfinite(clean)) or np.any(clean < 0) or np.any(clean > T):
+        raise ValueError("Spike times must be finite and lie in [0,T].")
+    if not 0 <= sensitive_coordinate < clean.size:
+        raise ValueError("Invalid sensitive coordinate.")
+    if any(parameter.requires_grad for parameter in model.parameters()):
+        raise ValueError("The victim model must be frozen before attack generation.")
+
+    rng = np.random.default_rng(seed)
+    label = int(true_label)
+    clean_theta = angle_encode(clean, T)
+    clean_tensor = torch.tensor(clean, dtype=torch.float32)
+    clean_theta_tensor = (torch.pi / 2.0) * clean_tensor / T
+    with torch.no_grad():
+        clean_logits = model(clean_theta_tensor.unsqueeze(0))[0]
+    competing = torch.cat((clean_logits[:label], clean_logits[label + 1:])).max()
+    clean_margin = float(clean_logits[label] - competing)
+    max_fidelity_loss = max(
+        1.0 - np.cos(np.pi * epsilon / (4.0 * T)) ** (2 * clean.size), 1e-12
+    )
+
+    def evaluate(batch):
+        mismatch = [classical_mismatch(clean, candidate, T=T) for candidate in batch]
+        feasible = np.asarray([item["delta_cls"] <= tau + 1e-12 for item in mismatch])
+        theta = np.asarray([angle_encode(candidate, T) for candidate in batch])
+        fidelity = np.prod(np.cos((theta - clean_theta) / 2.0) ** 2, axis=1)
+        with torch.no_grad():
+            logits = model(torch.tensor(theta, dtype=torch.float32))
+            other = logits.clone()
+            other[:, label] = -torch.inf
+            margins = (logits[:, label] - other.max(dim=1).values).numpy()
+            predictions = logits.argmax(1).numpy()
+        return fidelity, margins, predictions, mismatch, feasible
+
+    def ranks(values):
+        order = np.argsort(values, kind="stable")
+        result = np.empty(len(values), dtype=float)
+        result[order] = np.linspace(0.0, 1.0, len(values))
+        return result
+
+    def initial_scores(fidelity, margins, feasible):
+        quantum_rank = ranks(1.0 - fidelity)
+        margin_rank = ranks(clean_margin - margins)
+        score = (margins < 0.0).astype(float) + 0.35 * quantum_rank + 0.65 * margin_rank
+        score[~feasible] = -np.inf
+        return score
+
+    def select_initial(pool, fidelity, margins, feasible):
+        score = initial_scores(fidelity, margins, feasible)
+        ordered = list(np.argsort(score)[::-1][:retained - 4])
+        ordered += list(np.argsort(np.where(feasible, margins, np.inf))[:2])
+        ordered += list(np.argsort(np.where(feasible, fidelity, np.inf))[:2])
+        unique = []
+        for index in ordered + list(np.argsort(score)[::-1]):
+            if np.isfinite(score[index]) and index not in unique:
+                unique.append(int(index))
+            if len(unique) == min(retained, int(feasible.sum())):
+                break
+        return np.asarray(unique, dtype=int)
+
+    initial_queries = 600
+    global_count = initial_queries // 2
+    delta = rng.uniform(-epsilon, epsilon, size=(initial_queries, clean.size))
+    delta[global_count:] = 0.0
+    delta[global_count:, sensitive_coordinate] = rng.uniform(
+        -epsilon, epsilon, size=initial_queries - global_count
+    )
+    initial = np.clip(clean + delta, 0.0, T)
+    fidelity, margins, predictions, mismatch, feasible = evaluate(initial)
+    elite_indices = select_initial(initial, fidelity, margins, feasible)
+    elites = initial[elite_indices].copy()
+    elite_fidelity = fidelity[elite_indices].copy()
+    elite_margins = margins[elite_indices].copy()
+    elite_predictions = predictions[elite_indices].copy()
+    elite_mismatch = [mismatch[index] for index in elite_indices]
+
+    all_candidates = [candidate.copy() for candidate in initial]
+    all_fidelity = list(fidelity)
+    all_margins = list(margins)
+    all_predictions = list(predictions)
+    all_mismatch = list(mismatch)
+    all_feasible = list(feasible)
+    gradient_norms = []
+    rejected_infeasible = 0
+    refinement_queries = total_queries - initial_queries
+    update_counts = np.full(retained, refinement_queries // retained, dtype=int)
+    update_counts[:refinement_queries % retained] += 1
+    max_updates = int(update_counts.max())
+
+    for update in range(max_updates):
+        active = np.flatnonzero(update_counts > update)
+        current = torch.tensor(elites[active], dtype=torch.float32, requires_grad=True)
+        theta = (torch.pi / 2.0) * current / T
+        logits = model(theta)
+        other = logits.clone()
+        other[:, label] = -torch.inf
+        margin = logits[:, label] - other.max(dim=1).values
+        fidelity_t = torch.prod(torch.cos((theta - clean_theta_tensor) / 2.0) ** 2, dim=1)
+        quantum = torch.clamp((1.0 - fidelity_t) / max_fidelity_loss, 0.0, 1.0)
+        margin_pressure = torch.clamp(-margin / (abs(clean_margin) + 1.0), -1.0, 1.0)
+        successful = (margin.detach() < 0.0).float()
+        margin_weight = 0.65 - 0.40 * successful
+        objective = torch.sum(margin_weight * margin_pressure + (1.0 - margin_weight) * quantum)
+        gradient = torch.autograd.grad(objective, current)[0]
+        if not torch.isfinite(gradient).all():
+            raise RuntimeError("Non-finite Gradient Adaptive TEMP-DRIFT gradient encountered.")
+        gradient_norms.extend(torch.linalg.vector_norm(gradient, dim=1).detach().numpy().tolist())
+        progress = update / max(max_updates - 1, 1)
+        alpha = epsilon * (0.12 * (1.0 - progress) + 0.02)
+        with torch.no_grad():
+            direction = gradient.sign()
+            direction[:, sensitive_coordinate] *= 1.5
+            proposal = current + alpha * direction
+            lower = torch.maximum(clean_tensor - epsilon, torch.zeros_like(clean_tensor))
+            upper = torch.minimum(clean_tensor + epsilon, torch.full_like(clean_tensor, T))
+            proposal = torch.maximum(torch.minimum(proposal, upper), lower).numpy().astype(float)
+        proposal_fidelity, proposal_margins, proposal_predictions, proposal_mismatch, proposal_feasible = evaluate(proposal)
+        for local_index, elite_index in enumerate(active):
+            candidate = proposal[local_index]
+            is_feasible = bool(proposal_feasible[local_index])
+            if is_feasible:
+                elites[elite_index] = candidate
+                elite_fidelity[elite_index] = proposal_fidelity[local_index]
+                elite_margins[elite_index] = proposal_margins[local_index]
+                elite_predictions[elite_index] = proposal_predictions[local_index]
+                elite_mismatch[elite_index] = proposal_mismatch[local_index]
+            else:
+                rejected_infeasible += 1
+                candidate = elites[elite_index].copy()
+                proposal_fidelity[local_index] = elite_fidelity[elite_index]
+                proposal_margins[local_index] = elite_margins[elite_index]
+                proposal_predictions[local_index] = elite_predictions[elite_index]
+                proposal_mismatch[local_index] = elite_mismatch[elite_index]
+            all_candidates.append(candidate.copy())
+            all_fidelity.append(float(proposal_fidelity[local_index]))
+            all_margins.append(float(proposal_margins[local_index]))
+            all_predictions.append(int(proposal_predictions[local_index]))
+            all_mismatch.append(proposal_mismatch[local_index])
+            all_feasible.append(True)
+        if progress_context is not None:
+            current_success = bool(np.any(
+                proposal_feasible & (proposal_predictions != label)
+            ))
+            print(
+                f"[GRAD] seed={progress_context['model_seed']} "
+                f"eps={progress_context['epsilon_fraction']:.0%} "
+                f"sample={progress_context['sample_index']}/{progress_context['total_samples']} "
+                f"step={update + 1}/{max_updates} "
+                f"obj={float(objective.detach()):.4f} "
+                f"grad_norm={float(torch.linalg.vector_norm(gradient).detach()):.3f} "
+                f"1-F={float(np.max(1.0 - proposal_fidelity)):.4f} "
+                f"success={current_success} "
+                f"elapsed={progress_context['elapsed']():.1f}s",
+                flush=True,
+            )
+
+    all_candidates = np.asarray(all_candidates)
+    all_fidelity = np.asarray(all_fidelity)
+    all_margins = np.asarray(all_margins)
+    all_predictions = np.asarray(all_predictions)
+    all_feasible = np.asarray(all_feasible)
+    successful = all_feasible & (all_predictions != label)
+    if successful.any():
+        best_index = int(np.argmin(np.where(successful, all_fidelity, np.inf)))
+    else:
+        score = initial_scores(all_fidelity, all_margins, all_feasible)
+        best_index = int(np.argmax(score))
+    best = all_candidates[best_index]
+    best_mismatch = all_mismatch[best_index]
+    return best, {
+        "objective": "adaptive_margin_pressure_plus_one_minus_fidelity_gradient",
+        "quantum_drift": trace_distance_from_bloch(clean_theta, angle_encode(best, T)),
+        "fidelity": float(all_fidelity[best_index]),
+        "one_minus_fidelity": float(1.0 - all_fidelity[best_index]),
+        "clean_margin": clean_margin,
+        "attacked_margin": float(all_margins[best_index]),
+        **best_mismatch,
+        "feasible": bool(best_mismatch["delta_cls"] <= tau + 1e-12),
+        "feasible_candidate_fraction": float(np.mean(all_feasible)),
+        "evaluated_candidates": total_queries,
+        "initial_candidates": initial_queries,
+        "gradient_updates": refinement_queries,
+        "gradient_batches": max_updates,
+        "max_gradient_norm": float(max(gradient_norms, default=0.0)),
+        "rejected_infeasible_updates": rejected_infeasible,
+        "retained_candidates": retained,
+        "sensitive_coordinate": int(sensitive_coordinate),
+        "final_success": bool(all_predictions[best_index] != label),
+        "seed": int(seed),
+    }
+
+
 def temp_drift_two_stage(
     model,
     spike_times,
@@ -669,4 +872,120 @@ def temp_drift_one_stage(model, spike_times, true_label, epsilon, tau, T=100.0,
         "pairwise_coordinates": [[sensitive_coordinate, partner] for partner in partners],
         "retained_candidates": int(len(elites)),
         "seed": int(seed),
+    }
+
+
+def temp_drift_quantum_refined(model, spike_times, true_label, epsilon, tau,
+                               T=100.0, steps=50, candidates=32, seed=42,
+                               sensitive_coordinate=2, retained=12):
+    """Refine a boundary-crossing candidate toward timing-budget corners."""
+    clean = np.asarray(spike_times, dtype=float)
+    total_queries = int(steps * candidates)
+    if clean.ndim != 1 or clean.size < 2 or total_queries != 1600:
+        raise ValueError("Quantum-refined TEMP-DRIFT requires 1600 candidates.")
+    if any(parameter.requires_grad for parameter in model.parameters()):
+        raise ValueError("The victim model must be frozen before attack generation.")
+    stage1, stage1_info = temp_drift_adaptive(
+        model, clean, true_label, epsilon, tau, T=T, steps=40, candidates=30,
+        seed=seed, sensitive_coordinate=sensitive_coordinate,
+    )
+    rng = np.random.default_rng(seed + 32452843)
+    label = int(true_label)
+    clean_theta = angle_encode(clean, T)
+    partners = [index for index in range(clean.size) if index != sensitive_coordinate]
+
+    def evaluate(batch):
+        mismatch = [classical_mismatch(clean, candidate, T=T) for candidate in batch]
+        feasible = np.asarray([item["delta_cls"] <= tau + 1e-12 for item in mismatch])
+        theta = np.asarray([angle_encode(candidate, T) for candidate in batch])
+        fidelity = np.prod(np.cos((theta - clean_theta) / 2.0) ** 2, axis=1)
+        with torch.no_grad():
+            logits = model(torch.tensor(theta, dtype=torch.float32))
+            predictions = logits.argmax(1).numpy()
+            other = logits.clone(); other[:, label] = -torch.inf
+            margins = (logits[:, label] - other.max(dim=1).values).numpy()
+        return fidelity, margins, predictions, mismatch, feasible
+
+    def select(pool, fidelity, margins, predictions, feasible, stage1_success):
+        successful = feasible & (predictions != label)
+        if stage1_success or successful.any():
+            eligible = successful
+            ranking = np.where(eligible, fidelity, np.inf)
+        else:
+            eligible = feasible
+            ranking = np.where(eligible, margins, np.inf)
+        ordered = list(np.argsort(ranking)[:min(6, int(eligible.sum()))])
+        candidates_by_score = list(np.argsort(ranking)[:min(64, int(eligible.sum()))])
+        while len(ordered) < min(retained, int(eligible.sum())):
+            available = [index for index in candidates_by_score if index not in ordered]
+            if not available:
+                break
+            distances = [min(np.linalg.norm((pool[index] - pool[kept]) /
+                                             max(epsilon, 1e-12)) for kept in ordered)
+                         for index in available]
+            ordered.append(available[int(np.argmax(distances))])
+        return np.asarray(ordered, dtype=int)
+
+    fidelity, margins, predictions, mismatch, feasible = evaluate(stage1[None, :])
+    stage1_success = bool(feasible[0] and predictions[0] != label)
+    pool = stage1[None, :]
+    for generation, local_scale in enumerate((0.30, 0.18, 0.10, 0.05)):
+        elite = select(pool, fidelity, margins, predictions, feasible, stage1_success)
+        parents = pool[elite]
+        offspring = []
+        for query in range(100):
+            parent = parents[query % len(parents)].copy()
+            if query < 15:
+                proposal = clean + rng.uniform(-epsilon, epsilon, size=clean.size)
+            elif query < 55:
+                partner = partners[(query - 15) % len(partners)]
+                proposal = parent.copy()
+                for coordinate in (sensitive_coordinate, partner):
+                    direction = np.sign(proposal[coordinate] - clean[coordinate])
+                    if direction == 0 or rng.random() < 0.2:
+                        direction = rng.choice((-1.0, 1.0))
+                    proposal[coordinate] = clean[coordinate] + direction * epsilon
+            elif query < 80:
+                proposal = parent.copy()
+                direction = np.sign(proposal - clean)
+                direction[direction == 0] = rng.choice((-1.0, 1.0), size=int(np.sum(direction == 0)))
+                mask = rng.random(clean.size) < 0.75
+                proposal[mask] = clean[mask] + direction[mask] * epsilon
+            else:
+                first, second = parents[rng.integers(0, len(parents), size=2)]
+                proposal = parent + 0.5 * (first - second)
+                coordinates = rng.choice(clean.size, size=2, replace=False)
+                proposal[coordinates] += rng.uniform(-epsilon * local_scale,
+                                                     epsilon * local_scale, size=2)
+            proposal = np.clip(proposal, clean - epsilon, clean + epsilon)
+            offspring.append(np.clip(proposal, 0.0, T))
+        child = np.asarray(offspring)
+        child_fidelity, child_margins, child_predictions, child_mismatch, child_feasible = evaluate(child)
+        pool = np.vstack((pool, child)); fidelity = np.concatenate((fidelity, child_fidelity))
+        margins = np.concatenate((margins, child_margins)); predictions = np.concatenate((predictions, child_predictions))
+        mismatch.extend(child_mismatch); feasible = np.concatenate((feasible, child_feasible))
+        keep = select(pool, fidelity, margins, predictions, feasible, stage1_success)
+        pool, fidelity, margins, predictions, feasible = (pool[keep], fidelity[keep], margins[keep],
+                                                           predictions[keep], feasible[keep])
+        mismatch = [mismatch[index] for index in keep]
+
+    successful = feasible & (predictions != label)
+    best_index = (int(np.argmin(np.where(successful, fidelity, np.inf)))
+                  if successful.any() else int(np.argmin(np.where(feasible, margins, np.inf))))
+    best = pool[best_index]; best_mismatch = mismatch[best_index]
+    final_success = bool(predictions[best_index] != label)
+    return best, {
+        "objective": "boundary_then_success_gated_outward_fidelity_refinement",
+        "quantum_drift": trace_distance_from_bloch(clean_theta, angle_encode(best, T)),
+        "fidelity": float(fidelity[best_index]),
+        "one_minus_fidelity": float(1.0 - fidelity[best_index]),
+        "attacked_margin": float(margins[best_index]), **best_mismatch,
+        "feasible": bool(best_mismatch["delta_cls"] <= tau + 1e-12),
+        "evaluated_candidates": total_queries, "stage1_candidates": 1200,
+        "stage2_candidates": 400 if stage1_success else 0,
+        "stage1_success": stage1_success,
+        "stage1_success_preserved": bool(stage1_success and final_success),
+        "final_success": final_success,
+        "pairwise_coordinates": [[sensitive_coordinate, partner] for partner in partners],
+        "retained_candidates": retained, "seed": int(seed),
     }
