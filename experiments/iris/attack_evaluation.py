@@ -5,7 +5,14 @@ import torch
 
 from attacks.classical_timing import classical_timing_attack
 from attacks.random_jitter import random_timing_jitter
-from attacks.temp_drift import temp_drift_gradient, temp_drift_reference
+from attacks.temp_drift import (
+    temp_drift_adaptive,
+    temp_drift_gradient,
+    temp_drift_improved,
+    temp_drift_one_stage,
+    temp_drift_reference,
+    temp_drift_two_stage,
+)
 from encoding.quantum import angle_encode
 from encoding.ttfs import ttfs_encode
 from experiments.iris.data import load_iris_splits
@@ -81,6 +88,26 @@ def evaluate_attack_data(
             )
             info["feasible"] = info["delta_cls"] <= tau + 1e-12
             info["feasible_candidate_fraction"] = float(info["feasible"])
+        elif attack == "temp_drift_improved":
+            adv, info = temp_drift_improved(
+                model, times, int(labels[index]), epsilon, tau, T=T,
+                steps=50, candidates=32, seed=seed + index,
+            )
+        elif attack == "temp_drift_adaptive":
+            adv, info = temp_drift_adaptive(
+                model, times, int(labels[index]), epsilon, tau, T=T,
+                steps=50, candidates=32, seed=seed + index,
+            )
+        elif attack == "temp_drift_two_stage":
+            adv, info = temp_drift_two_stage(
+                model, times, int(labels[index]), epsilon, tau, T=T,
+                steps=50, candidates=32, seed=seed + index,
+            )
+        elif attack == "temp_drift_one_stage":
+            adv, info = temp_drift_one_stage(
+                model, times, int(labels[index]), epsilon, tau, T=T,
+                steps=50, candidates=32, seed=seed + index,
+            )
         elif attack == "temp_drift_gradient":
             adv, info = temp_drift_gradient(
                 times, epsilon, tau, T=T, iterations=iterations,
@@ -129,6 +156,17 @@ def evaluate_attack_data(
         else 0.0
     )
     perturbations = np.abs(np.asarray(attacked_times) - clean_times)
+    feasibility_tolerance = 1e-5
+    exact_feasible = []
+    for index, item in enumerate(classical):
+        timing_ok = (
+            np.all(np.isfinite(attacked_times[index]))
+            and np.all(np.asarray(attacked_times[index]) >= -feasibility_tolerance)
+            and np.all(np.asarray(attacked_times[index]) <= T + feasibility_tolerance)
+            and np.max(perturbations[index]) <= epsilon + feasibility_tolerance
+        )
+        stealth_ok = attack not in ("temp_drift_reference", "temp_drift_improved", "temp_drift_adaptive", "temp_drift_two_stage", "temp_drift_one_stage", "temp_drift_gradient") or item["delta_cls"] <= tau + 1e-12
+        exact_feasible.append(bool(timing_ok and stealth_ok))
     summary = {
         "dataset": "iris",
         "split": split,
@@ -158,7 +196,11 @@ def evaluate_attack_data(
         "step_size": actual_step_size,
         "restarts": int(restarts) if attack == "temp_drift_gradient" else 0,
         "feasible_attack_fraction": float(np.mean([item.get("feasible", True) for item in attack_info])),
+        "exact_feasibility_rate": float(np.mean(exact_feasible)),
+        "feasibility_tolerance": feasibility_tolerance,
         "feasible_candidate_fraction": float(np.mean([item.get("feasible_candidate_fraction", 1.0) for item in attack_info])),
+        "stage1_successful_attacks": int(sum(bool(info.get("stage1_success", False)) and bool(clean_correct[index]) for index, info in enumerate(attack_info))),
+        "stage1_successes_preserved": int(sum(bool(info.get("stage1_success_preserved", False)) and bool(clean_correct[index]) for index, info in enumerate(attack_info))),
         "runtime_seconds": float(runtime),
         "n_qubits": int(config["n_qubits"]),
         "checkpoint": str(checkpoint_path),
