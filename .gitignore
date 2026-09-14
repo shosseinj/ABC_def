@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.pt
+*.zip
 checkpoints/*.pt
 results/*.csv
 results/*.json
+data/*
