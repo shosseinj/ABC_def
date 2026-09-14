@@ -44,6 +44,13 @@ def test_pca_dimensions_preserve_reduced_qsnn_capacity():
         assert model.circuit_depth() == 44
 
 
+def test_pca24_resolution_model_uses_fixed_capacity():
+    model = MNISTReducedQSNN(reupload_blocks=4, input_features=24)
+    assert model(torch.rand(2, 24)).shape == (2, 10)
+    assert model.trainable_parameter_count() == 234
+    assert model.circuit_depth() == 44
+
+
 def test_resolution_resize_is_deterministic_and_bounded():
     images = torch.randint(0, 256, (3, 28, 28), generator=torch.Generator().manual_seed(7), dtype=torch.uint8)
     for resolution in (8, 12, 14):

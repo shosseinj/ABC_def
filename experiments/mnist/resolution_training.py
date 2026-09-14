@@ -80,9 +80,9 @@ def train_resolution_variant(config, resolution, train_features, train_labels,
         }, checkpoint_path.with_name(checkpoint_path.stem + "_latest.pt"))
         print(
             f"[TRAIN] resolution={resolution}x{resolution} epoch={epoch} "
-            f"train_acc={train_metrics['accuracy']:.4f} val_acc={validation_metrics['accuracy']:.4f} "
             f"train_loss={row['train_loss']:.4f} val_loss={validation_metrics['loss']:.4f} "
-            f"patience={stale}/{config['patience']}", flush=True,
+            f"val_acc={validation_metrics['accuracy']:.4f} "
+            f"macro_f1={validation_metrics['macro_f1']:.4f}", flush=True,
         )
         if epoch >= config["minimum_early_stop_epoch"] and stale >= config["patience"]:
             stopping_reason = "early_stop"
@@ -99,8 +99,10 @@ def train_resolution_variant(config, resolution, train_features, train_labels,
         "resolution": resolution, "raw_features": resolution * resolution,
         "pca_features": config["pca_features"], "qubits": config["n_qubits"],
         "reupload_blocks": config["reupload_blocks"],
+        "circuit_depth": model.circuit_depth(),
         "parameters": model.trainable_parameter_count(), "best_epoch": best_epoch,
         "stopping_epoch": epoch, "stopping_reason": stopping_reason,
+        "convergence_established": stopping_reason == "early_stop",
         "train": evaluate(model, train_theta, train_labels, config["batch_size"], True),
         "validation": evaluate(model, validation_theta, validation_labels, config["batch_size"], True),
         "runtime_seconds": float(time.perf_counter() - started), "history": history,
