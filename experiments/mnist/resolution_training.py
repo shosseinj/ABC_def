@@ -19,7 +19,10 @@ def train_resolution_variant(config, resolution, train_features, train_labels,
     train_theta = _theta(train_features, config["time_window"])
     validation_theta = _theta(validation_features, config["time_window"])
     train_targets = torch.tensor(train_labels, dtype=torch.long)
-    model = MNISTReducedQSNN(config["n_qubits"], config["reupload_blocks"], config["n_classes"])
+    model = MNISTReducedQSNN(
+        config["n_qubits"], config["reupload_blocks"], config["n_classes"],
+        input_features=train_features.shape[1],
+    )
     with torch.no_grad():
         model.qlayer.weights.uniform_(-0.1, 0.1)
     optimizer = torch.optim.Adam(

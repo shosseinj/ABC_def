@@ -55,22 +55,25 @@ class MNIST4x4QSNN(nn.Module):
 
 
 class MNISTReducedQSNN(nn.Module):
-    """Eight-qubit data-reuploading QSNN consuming 16 reduced 8x8 features."""
+    """Eight-qubit QSNN consuming cyclic slices of reduced image features."""
 
-    def __init__(self, n_qubits=8, reupload_blocks=2, n_classes=10):
+    def __init__(self, n_qubits=8, reupload_blocks=2, n_classes=10, input_features=16):
         super().__init__()
         if qml is None:
             raise ImportError("PennyLane is required. Install requirements.txt")
         if n_qubits != 8 or reupload_blocks < 2:
             raise ValueError("The reduced architecture requires 8 qubits and at least 2 blocks.")
+        if input_features < n_qubits or input_features % n_qubits:
+            raise ValueError("Reduced input features must be a positive multiple of 8.")
         self.n_qubits = n_qubits
         self.reupload_blocks = reupload_blocks
+        self.input_features = input_features
         device = qml.device("default.qubit", wires=n_qubits, shots=None)
 
         @qml.qnode(device, interface="torch", diff_method="backprop")
         def circuit(inputs, weights):
             for block in range(reupload_blocks):
-                offset = (block * n_qubits) % 16
+                offset = (block * n_qubits) % input_features
                 for wire in range(n_qubits):
                     qml.RY(inputs[..., offset + wire], wires=wire)
                     qml.RY(weights[block, wire, 0], wires=wire)

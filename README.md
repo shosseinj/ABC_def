@@ -101,7 +101,7 @@ The gradient implementation batches active elites into one model/QNode call per 
 
 These values describe the current implementation. No artifact contains a controlled pre-optimization versus post-optimization benchmark on identical hardware and workload, so no speedup factor is claimed. Runtime values from the older `iris_attack_comparison_gradient.json` are not directly comparable because that artifact used a different attack grid and checkpoint.
 
-## MNIST Clean-Baseline Development
+## MNIST Clean Baseline Development
 
 The first MNIST baseline used balanced subsets of 1,000 training and 200 validation examples per class, 4x4 average-pooled images, 16 TTFS inputs, 4 qubits, 4 re-upload blocks, 122 trainable parameters, and five model seeds. The frozen result artifact selected checkpoints by highest validation accuracy, then lowest validation CE, then earliest epoch. No held-out data, attacks, or defenses were used.
 
@@ -139,6 +139,28 @@ The resolution ablation held PCA dimensionality, 8 qubits, 4 blocks, optimizer s
 
 The 12x12 run stopped at epoch 355 by early stopping and did not exceed the 8x8 reference. The predeclared gate required at least `+0.010` validation accuracy before progressing, so 14x14 was intentionally not run. This is a negative resolution result and is retained as such.
 
+## PCA Dimension Ablation
+
+The controlled seed-42 clean ablation compared PCA-16, PCA-24, and PCA-32 on the same frozen 10,000-example training and 2,000-example validation IDs. All reducers were fitted on the 64-feature 8x8 training partition only, saved, and reused unchanged for validation. The split and model seed, preprocessing apart from PCA dimension, TTFS/angle encoding, 8-qubit four-block QSNN, circuit depth, parameter count, optimizer, learning rate, training budget, validation-CE checkpoint rule, and early-stopping rule were held fixed. No held-out/test data, attacks, or defenses were accessed, and no five-seed run was started.
+
+| PCA Dim | Raw Features | Explained Variance | Quantum Input | Qubits | Blocks | Circuit Depth | Parameters | Val Acc | Change vs. PCA-16 | Macro-F1 | Val CE | Best / Stop Epoch | Runtime (s) | Convergence Status |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 16 | 64 | 0.876441 | 16 | 8 | 4 | 44 | 234 | **0.8680** | 0.0000 | **0.8675** | **0.4432** | 400 / 400 | 2,763.0* | Not established |
+| 24 | 64 | 0.954152 | 24 | 8 | 4 | 44 | 234 | 0.8530 | -0.0150 | 0.8524 | 0.4912 | 336 / 356 | 7,200.2** | Early-stop criterion reached |
+| 32 | 64 | 0.984184 | 32 | 8 | 4 | 44 | 234 | 0.8355 | -0.0325 | 0.8346 | 0.5218 | 351 / 371 | 7,923.8 | Early-stop criterion reached |
+
+\* PCA-16 runtime covers only its epoch-251-to-400 continuation.
+
+\** PCA-24 runtime is segmented because execution was interrupted after epoch 356 was checkpointed. The selected epoch-336 state was unchanged, and complete history reconstructs epoch 356 as the stopping boundary.
+
+The runtimes are descriptive rather than directly comparable: PCA-16 is continuation-only, PCA-24 is segmented, and identical timing conditions were not recorded across arms.
+
+The fixed cyclic schedule has an important architectural limitation. Four 8-qubit blocks provide 32 encoding slots, so PCA-16 components are each exposed twice, PCA-24 components 1-8 are exposed twice while components 9-24 are exposed once, and PCA-32 components are each exposed once. Capacity, depth, and the cyclic rule remained fixed, but component repetition frequency changed with PCA dimension. The ablation therefore tests whether larger PCA inputs improve the **current fixed QSNN architecture**; it does not isolate the universal effect of PCA dimensionality under equal component exposure.
+
+Neither larger input met the predeclared `+0.010` validation-accuracy rule. Both had lower selected validation accuracy and higher validation CE than PCA-16. The artifact verdict is:
+
+`MNIST PCA BOTTLENECK: NOT CONFIRMED`
+
 ## Current Best MNIST Configuration
 
 The current validation-selected configuration is:
@@ -155,11 +177,13 @@ At the selected checkpoint, training accuracy was `0.8714`; validation accuracy 
 
 ## Current MNIST Bottleneck Hypothesis
 
-**Evidence:** 12x12 performed worse than 8x8 under fixed PCA-16 and model capacity, while increasing re-upload depth from two to four blocks improved the seed-42 validation result. The four-block 8x8 run still had not established convergence at epoch 400.
+**Evidence:** 12x12 performed worse than 8x8 under fixed PCA-16 and model capacity. The controlled seed-42 PCA ablation then increased explained variance from `0.8764` at PCA-16 to `0.9542` at PCA-24 and `0.9842` at PCA-32, but validation accuracy decreased from `0.8680` to `0.8530` and `0.8355`, respectively. Increasing re-upload depth from two to four blocks had improved the earlier seed-42 result, while the four-block PCA-16 run still had not established convergence at epoch 400.
 
-**Interpretation:** raw image resolution alone is not supported as the current bottleneck. A fixed 16-dimensional representation and/or model-capacity/optimization bottleneck remains plausible, but no causal mechanism has been demonstrated.
+**Interpretation:** neither raw image resolution nor PCA compression is confirmed as the current bottleneck for the fixed four-block cyclic architecture. Because four 8-qubit blocks repeat all PCA-16 components, repeat only the first eight PCA-24 components, and upload each PCA-32 component once, the ablation does not isolate retained PCA information from per-component exposure. Model capacity and/or optimization remains plausible, but no causal mechanism has been demonstrated. The comparison is single-seed validation evidence and does not establish a seed-general effect.
 
-**Next planned controlled experiment:** the only saved conditional next resolution arm was 14x14, and it was correctly **not run** because 12x12 failed the predeclared `+0.010` validation-accuracy gate. No artifact explicitly freezes a replacement next experiment after that failure; multi-seed confirmation or a new controlled representation/capacity ablation is therefore a recommendation, not a completed or frozen plan.
+**Remaining hypotheses:** model optimization or capacity may still limit the current clean model, but neither mechanism has been established. The single-seed design also leaves seed generality unknown.
+
+**Next planned experiment:** no replacement protocol is frozen and no run has started. A defensible next experiment would first preregister a controlled design that separates PCA dimension from component-exposure frequency, for example by balancing exposure or explicitly crossing PCA dimension with re-upload coverage. Multi-seed confirmation should occur only after that design decision, not automatically.
 
 ## Current Project Status
 
@@ -174,7 +198,8 @@ At the selected checkpoint, training accuracy was `0.8714`; validation accuracy 
 | MNIST 4x4 baseline | Complete, needs improvement | Five validation seeds |
 | MNIST 8x8 PCA-16 development | Current best | Single validation seed; convergence not established |
 | MNIST resolution ablation | Stopped at gate | 12x12 negative; 14x14 not run |
-| MNIST next experiment | Not started / not frozen | Conditional 14x14 was blocked; no replacement protocol is frozen |
+| MNIST PCA-dimension ablation | Complete; `NOT CONFIRMED` | PCA-24/32 did not improve seed-42 validation accuracy; cyclic exposure is dimension-dependent |
+| MNIST next experiment | Planned concept only; not frozen or started | Separate PCA dimension from component exposure before multi-seed confirmation |
 | MNIST attacks and defenses | Not run | No robustness evidence |
 | MNIST held-out evaluation | Not accessed in cited artifacts | Generalization remains unknown |
 
@@ -206,3 +231,8 @@ At the selected checkpoint, training accuracy was `0.8714`; validation accuracy 
 - `results/mnist_8x8_pca16_blocks4_seed42_epoch400.json`
 - `results/mnist_8x8_pca16_blocks4_seed42_epoch400_history.csv`
 - `results/mnist_12x12_pca16_seed42.json`
+- `results/mnist_8x8_pca_dimension_seed42_report.md`
+- `results/mnist_8x8_pca24_blocks4_seed42.json`
+- `results/mnist_8x8_pca32_blocks4_seed42.json`
+- `results/mnist_8x8_pca24_blocks4_seed42_history.csv`
+- `results/mnist_8x8_pca32_blocks4_seed42_history.csv`
