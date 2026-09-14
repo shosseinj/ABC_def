@@ -19,14 +19,21 @@ def downsample_mnist_4x4(images):
 
 
 def downsample_mnist_8x8(images):
+    return resize_mnist(images, 8)
+
+
+def resize_mnist(images, resolution):
     images = torch.as_tensor(images)
     if images.ndim != 3 or tuple(images.shape[1:]) != (28, 28):
         raise ValueError("MNIST images must have shape [N,28,28].")
     pixels = images.to(torch.float32) / 255.0 if images.dtype == torch.uint8 else images.to(torch.float32)
     if not torch.isfinite(pixels).all() or pixels.min() < 0 or pixels.max() > 1:
         raise ValueError("MNIST pixels must be finite and lie in [0,1].")
-    pooled = F.adaptive_avg_pool2d(pixels.unsqueeze(1), (8, 8))
-    return pooled.reshape(len(images), 64).numpy()
+    resolution = int(resolution)
+    if resolution <= 0 or resolution > 28:
+        raise ValueError("MNIST resolution must be between 1 and 28.")
+    pooled = F.adaptive_avg_pool2d(pixels.unsqueeze(1), (resolution, resolution))
+    return pooled.reshape(len(images), resolution * resolution).numpy()
 
 
 class TrainingOnlyPCAReducer:
@@ -78,6 +85,10 @@ class TrainingOnlyPCAReducer:
 
 
 def load_mnist_8x8_development(config):
+    return load_mnist_resolution_development(config, 8)
+
+
+def load_mnist_resolution_development(config, resolution):
     from torchvision.datasets import MNIST
 
     dataset = MNIST(
@@ -89,7 +100,7 @@ def load_mnist_8x8_development(config):
         labels, config["split_seed"], config["train_per_class"],
         config["validation_per_class"],
     )
-    features = downsample_mnist_8x8(dataset.data)
+    features = resize_mnist(dataset.data, resolution)
     return (
         features[train_indices], features[validation_indices],
         labels[train_indices], labels[validation_indices],

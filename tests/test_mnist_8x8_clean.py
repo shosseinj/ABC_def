@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from experiments.mnist.data import TrainingOnlyPCAReducer, downsample_mnist_8x8
+from experiments.mnist.data import TrainingOnlyPCAReducer, downsample_mnist_8x8, resize_mnist
 from models.mnist_qsnn import MNISTReducedQSNN
 
 
@@ -34,3 +34,13 @@ def test_capacity_variants_only_add_reupload_blocks():
         assert model(torch.rand(2, 16)).shape == (2, 10)
         assert model.trainable_parameter_count() == parameters
         assert model.circuit_depth() == depth
+
+
+def test_resolution_resize_is_deterministic_and_bounded():
+    images = torch.randint(0, 256, (3, 28, 28), generator=torch.Generator().manual_seed(7), dtype=torch.uint8)
+    for resolution in (8, 12, 14):
+        first = resize_mnist(images, resolution)
+        second = resize_mnist(images, resolution)
+        assert first.shape == (3, resolution * resolution)
+        assert np.array_equal(first, second)
+        assert np.all((first >= 0) & (first <= 1))
