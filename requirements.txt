@@ -8,4 +8,5 @@ pennylane>=0.36
 torch==2.9.1
 torchvision==0.24.1
 tonic==1.6.0
+aedat==2.2.0
 pytest>=8.0

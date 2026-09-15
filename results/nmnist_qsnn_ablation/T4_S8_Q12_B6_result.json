@@ -1,0 +1,23 @@
+{
+  "run": "T4_S8_Q12_B6",
+  "temporal_bins": 4,
+  "spatial_polarity_channels": 8,
+  "qubits": 12,
+  "blocks": 6,
+  "input_features": 32,
+  "params": 274,
+  "best_validation_accuracy": 0.7672,
+  "best_validation_loss": 0.8335586181640625,
+  "best_epoch": 15,
+  "runtime_seconds": 1343.4183745000046,
+  "peak_gpu_memory_bytes": 1321157120,
+  "training_stable": true,
+  "convergence": true,
+  "final_training_loss": 0.8268483551198786,
+  "checkpoint": "checkpoints\\nmnist_qsnn_ablation\\T4_S8_Q12_B6_best.pt",
+  "checkpoint_sha256": "c68065369bdad33af3c98b9b0a9045722f05cb95f00e2649479990b8e8318e75",
+  "official_test_accessed": false,
+  "attacks_run": false,
+  "defenses_run": false,
+  "reused": false
+}

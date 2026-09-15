@@ -1,0 +1,43 @@
+{
+  "run": "T4_S8_Q8_B4",
+  "dataset": "N-MNIST",
+  "data_root": "data/nmnist",
+  "split_manifest": "results/nmnist_snn_multiseed_split.json",
+  "split_sha256": "a12176ce117ab9a85dd29d277901f8617ad2b5427dd3f976dbba436942f70198",
+  "seed": 42,
+  "original_representation": "variable-length native events x,y,t,p on a 34x34 sensor",
+  "temporal_bins": 4,
+  "spatial_polarity_channels": 8,
+  "spatial_grid": [
+    2,
+    2
+  ],
+  "polarity_channels": 2,
+  "input_features": 32,
+  "normalization": "per-sample log1p count divided by log1p sample maximum bin-channel count",
+  "n_qubits": 8,
+  "n_blocks": 4,
+  "n_classes": 10,
+  "encoding": "temporal-major angle encoding; contiguous time groups assigned to blocks; channels assigned modulo qubits",
+  "data_reuploading": true,
+  "variational_gates": [
+    "RY",
+    "RZ"
+  ],
+  "entanglement": "CNOT ring",
+  "measurements": "local Pauli-Z expectations",
+  "output_head": "Linear(8,10)",
+  "optimizer": "Adam",
+  "learning_rate": 0.003,
+  "weight_decay": 0.0,
+  "batch_size": 256,
+  "epochs": 15,
+  "gradient_clip_norm": 1.0,
+  "checkpoint_selection": "highest validation accuracy, then lowest validation loss",
+  "backend": "torch.cuda batched analytic state-vector",
+  "device": "cuda:0",
+  "attacks_enabled": false,
+  "defenses_enabled": false,
+  "official_test_enabled": false,
+  "architecture_search_beyond_protocol": false
+}

@@ -61,6 +61,12 @@ def verify_partitioned(name, loader, path, sensor_size, expected_classes):
         test = loader(save_to=str(path), train=False)
         train_summary = partition_summary(train)
         test_summary = partition_summary(test)
+        if name == "SHD":
+            for summary in (train_summary, test_summary):
+                summary["sample"]["polarity_available"] = False
+                summary["sample"]["channel_information"] = (
+                    "700 cochlear input channels via x; Tonic's p field is a constant placeholder"
+                )
         labels = sorted(set(train_summary["labels_present"]) | set(test_summary["labels_present"]))
         if len(labels) != expected_classes:
             raise RuntimeError(f"Expected {expected_classes} classes, found {len(labels)}.")
