@@ -1,5 +1,14 @@
 # Clean Performance Benchmark Comparison
 
+## Summary
+
+| Dataset | Model | Clean Accuracy | Re-audited | Status |
+|---|---|---:|---|---|
+| N-MNIST | SNN | 98.35% +/- 0.18% | No | Baseline complete |
+| SHD | SNN | 65.99% +/- 2.33% | **Yes - VERIFIED** | Baseline complete |
+| DVS Gesture | SNN | TBD | No | Pending |
+| CIFAR10-DVS | SNN | TBD | No | 64x64 resolution check complete; held-out test pending |
+
 ## Dataset Availability
 
 | Dataset | Status | Native partitions | Storage |
@@ -38,7 +47,9 @@ The fixed clean protocol used 10 ordered, polarity-separated 34x34 event-count f
 | Test accuracy | 98.35% +/- 0.18% |
 | Macro-F1 | 98.34% +/- 0.19% |
 
-Parameter count: **25,482**.
+Parameter count: **25,482**. Re-audit: not yet independently re-evaluated.
+
+**Re-audit status**: Pending. Test results were evaluated once per seed after training. Independent re-evaluation script not yet implemented for N-MNIST.
 
 ### N-MNIST QSNN Seed-42 Development Ablation
 
@@ -69,36 +80,53 @@ The selected development candidate is **T4-S8-Q12-B6**, improving seed-42 valida
 | Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
 |---|---|---|---|---:|---|
 | Input-Specific and Universal Adversarial Attack... | Reported SNN | SNN | Neuromorphic audio spikes | 76.59% | Literature reference |
-| Ours | Our SNN | SNN | Native temporal SHD recurrent LIF SNN; 5 deterministic seeds | 46.72% +/- 4.28% | Internal baseline |
+| Ours | Our SNN | SNN | Native temporal SHD recurrent LIF SNN; 5 deterministic seeds | 65.99% +/- 2.33% | Internal baseline |
 | Ours | Our QSNN | QSNN | Quantum temporal encoding | TBD | Main model |
 
 ### Our SHD SNN Multi-Seed Baseline
 
-The fixed clean protocol used all 700 cochlear input channels, 100 ordered binary spike-occupancy bins over a 1.4-second window, and no normalization. A compact recurrent LIF network (`Linear(700,128)-recurrent-LIF(128)-Linear(128,20)`) was trained with one stratified validation split (`split_seed = 42`) and five deterministic model seeds. Checkpoints were selected by validation accuracy, then validation loss, then earliest epoch before one final official-test evaluation per seed.
+The current clean protocol uses all 700 cochlear input channels, 100 ordered binary spike-occupancy bins over a 1.4-second window, and no normalization. A compact recurrent LIF network (`Linear(700,128)-recurrent-LIF(128)-Linear(128,20)`) uses one stratified validation split (`split_seed = 42`) and five deterministic model seeds. Training used a total budget of 350 epochs with `ReduceLROnPlateau(mode="max", factor=0.5, patience=10, min_lr=1e-5)` and early-stopping patience 40.
 
-| Seed | Best Validation Accuracy | Final Test Accuracy | Macro-F1 | Best Epoch | Training Runtime |
-|---:|---:|---:|---:|---:|---:|
-| 42 | 47.30% | 51.77% | 48.24% | 38 | 254.08 s |
-| 123 | 45.89% | 46.69% | 43.64% | 39 | 246.67 s |
-| 777 | 34.38% | 39.93% | 35.75% | 14 | 132.50 s |
-| 2026 | 46.32% | 47.66% | 44.20% | 40 | 241.35 s |
-| 6543 | 43.50% | 47.57% | 42.63% | 19 | 158.68 s |
+| Seed | Best Validation | Final Test | Macro-F1 | Best Epoch | Stopping Epoch | LR Reductions | Final LR | Extension Runtime |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 42 | 78.86% | 65.77% | 64.68% | 271 | 311 | 7 | 0.000010 | 878.26 s |
+| 123 | 81.68% | 69.79% | 69.11% | 217 | 257 | 5 | 0.00003125 | 567.76 s |
+| 777 | 77.39% | 66.21% | 65.63% | 232 | 272 | 7 | 0.000010 | 651.97 s |
+| 2026 | 76.90% | 64.00% | 63.20% | 233 | 273 | 6 | 0.000015625 | 655.77 s |
+| 6543 | 82.05% | 64.18% | 63.90% | 190 | 230 | 5 | 0.00003125 | 432.93 s |
 
 | Aggregate Metric | Mean +/- Sample SD |
 |---|---:|
-| Validation accuracy | 43.48% +/- 5.28% |
-| Test accuracy | 46.72% +/- 4.28% |
-| Macro-F1 | 42.89% +/- 4.53% |
+| Validation accuracy | 79.38% +/- 2.39% |
+| Test accuracy | 65.99% +/- 2.33% |
+| Macro-F1 | 65.30% +/- 2.31% |
 
-Parameter count: **108,692**. Mean training runtime: **206.66 s**. This weak clean baseline is retained without post-test tuning.
+Parameter count: **108,692**. Each validation-selected checkpoint was evaluated once on the official SHD test partition after training and model selection were complete.
+
+**Re-audit status**: All 5 checkpoints independently re-evaluated on the official SHD test partition. Every seed produced an exact match (zero difference in accuracy, macro-F1, loss, and confusion matrices). Verdict: **VERIFIED**. Evidence: `results/shd_snn_test_reaudit.json`, `results/shd_snn_test_reaudit_report.md`.
 
 ## CIFAR10-DVS
 
 | Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
 |---|---|---|---|---:|---|
 | Time Is All It Takes | SpikingResformer | SNN | Integer event grid | 82.90% | Literature reference |
-| Ours | Our SNN | SNN | Same internal split / preprocessing | TBD | Internal baseline |
+| Ours | Our SNN | SNN | 10-bin polarity-separated 64x64 event frames; validation-only | TBD | Internal baseline; resolution check ACCEPT |
 | Ours | Our QSNN | QSNN | Quantum temporal encoding | TBD | Optional extension |
+
+### CIFAR10-DVS 64x64 Resolution Check
+
+The comparison reused the frozen stratified split (`split_seed = 42`, SHA-256 `629571c70b6202629206d7a449a41e02f124efba2cf469f966c19ea4cdf288b8`) with 8,000 training and 1,000 validation samples; the 1,000-sample held-out partition was not accessed. Both runs used seed 42, 10 temporal bins, separate polarity channels, additive event counts, per-sample max normalization, the same convolutional LIF pattern and LIF settings, AdamW, `ReduceLROnPlateau` stepped on validation accuracy, and the same checkpoint-selection rule. The 64x64 representation mapped native coordinates with deterministic floor division before accumulation.
+
+The earlier 128x128 run was interrupted and its saved checkpoint metadata did not match the observed run log, so both resolutions were rerun under the same cached-frame protocol. For reporting, "substantially faster" was operationalized as at least 1.25x mean epoch speedup.
+
+| Resolution | Best Validation Accuracy | Best Validation Loss | Best Epoch | Mean Epoch Runtime | Peak GPU Allocated | Parameters | Throughput |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 128x128 | 50.40% | 1.9122 | 6 | 18.5 s | 0.820 GB | 187,402 | 433.6 samples/s |
+| 64x64 | **54.80%** | **1.8448** | 21 | **14.2 s** | **0.253 GB** | 64,522 | **564.4 samples/s** |
+
+The 64x64 run was 1.31x faster, used less peak allocated GPU memory, and improved validation accuracy by 4.40 percentage points. `scheduler.step(validation_accuracy)` was called 36 times. Selection verdict: **CIFAR10-DVS 64x64: ACCEPT**. No held-out test evaluation or 350-epoch training was performed in this comparison.
+
+Evidence and artifacts: `results/cifar10_dvs_resolution_comparison_seed42.json`, `results/cifar10_dvs_resolution_128x128_seed42_history.csv`, `results/cifar10_dvs_resolution_64x64_seed42_history.csv`, and the corresponding LR-history and checkpoint files.
 
 ## Iris
 
