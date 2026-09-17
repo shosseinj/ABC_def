@@ -66,6 +66,27 @@ This validation-only study reused the frozen SNN/QSNN official-training split (`
 
 The selected development candidate is **T4-S8-Q12-B6**, improving seed-42 validation accuracy by **7.16 percentage points** over the original sanity baseline. Its advantage over T4-S8-Q8-B6 is only 0.84 percentage points and requires multi-seed confirmation. The official N-MNIST test partition was not accessed, so the main `Our QSNN` clean-accuracy entry remains **TBD** until the architecture is frozen, multi-seed training is complete, and one final official-test evaluation is performed. Full development artifacts are documented in `results/nmnist_qsnn_ablation_report.md`.
 
+### N-MNIST QSNN Seed-42 Timing-Attack Comparison
+
+The selected T4-S8-Q12-B6 checkpoint was evaluated on the same 100 clean-correct validation samples, with 10 samples per class. The official N-MNIST test partition was not instantiated. Both attacks preserved coordinates, polarity, labels, event counts, timestamp ordering, and the original clean time window; the perturbation bound was 2%, 5%, or 10% of each sample's inclusive clean duration. PGD used 20 surrogate-gradient steps, while derivative-free TEMP-DRIFT evaluated 1,600 candidates per sample, so their search budgets are not directly comparable.
+
+| Epsilon | Attack | Attack Success Rate | Attacked Accuracy | Mean 1-Fidelity | Mean Trace Distance | Feasibility |
+|---|---|---:|---:|---:|---:|---:|
+| 2% | PGD | 8% | 92% | 0.042797 | 0.177274 | 100% |
+| 2% | TEMP-DRIFT | **22%** | **78%** | 0.073987 | 0.263669 | 100% |
+| 5% | PGD | 32% | 68% | 0.274971 | 0.479222 | 100% |
+| 5% | TEMP-DRIFT | **76%** | **24%** | 0.422699 | 0.641635 | 100% |
+| 10% | PGD | 63% | 37% | 0.663569 | 0.792713 | 100% |
+| 10% | TEMP-DRIFT | **99%** | **1%** | 0.890414 | 0.942616 | 100% |
+
+| Epsilon | PGD Only Successful | TEMP-DRIFT Only Successful | Both Successful | Both Robust |
+|---|---:|---:|---:|---:|
+| 2% | 0 | 14 | 8 | 78 |
+| 5% | 0 | 44 | 32 | 24 |
+| 10% | 0 | 36 | 63 | 1 |
+
+Under this frozen exploratory protocol, TEMP-DRIFT had higher ASR than PGD at every tested epsilon, by 14, 44, and 36 percentage points respectively. This is single-seed validation evidence with unequal attack-search budgets; it does not establish a general robustness or attack-superiority claim. Full aggregate and per-sample artifacts are in `results/nmnist_attack_comparison_seed42_report.md`, `results/nmnist_attack_comparison_seed42.json`, `results/nmnist_attack_comparison_seed42.csv`, and `results/nmnist_attack_samples_seed42.csv`.
+
 ## DVS Gesture
 
 | Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
