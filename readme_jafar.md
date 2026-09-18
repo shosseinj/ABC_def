@@ -66,6 +66,35 @@ This validation-only study reused the frozen SNN/QSNN official-training split (`
 
 The selected development candidate is **T4-S8-Q12-B6**, improving seed-42 validation accuracy by **7.16 percentage points** over the original sanity baseline. Its advantage over T4-S8-Q8-B6 is only 0.84 percentage points and requires multi-seed confirmation. The official N-MNIST test partition was not accessed, so the main `Our QSNN` clean-accuracy entry remains **TBD** until the architecture is frozen, multi-seed training is complete, and one final official-test evaluation is performed. Full development artifacts are documented in `results/nmnist_qsnn_ablation_report.md`.
 
+### N-MNIST Hybrid QSNN Seed-42 Development
+
+The T4-S8 adapter was replaced by 10 full-resolution, polarity-separated event-count frames. A lightweight two-stage Conv/LIF extractor produces an 8-value bounded latent, with one value assigned to each of eight qubits. The selected circuit uses two genuine data re-upload blocks with trainable RY/RZ rotations, CNOT-ring entanglement, full computational-basis probability measurement, and a linear 10-class readout. There is no classical bypass around the quantum circuit. The frozen 55,000/5,000 split and Seed 42 were retained; the official test partition was not instantiated.
+
+| Model | Best Validation Accuracy | Macro-F1 | Best Epoch | Parameters | Batch | Training Runtime | Peak GPU Allocated |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Compact latent + classical linear head | 93.70% | 93.67% | 18 | 4,514 | 256 | 284.11 s | 1.562 GB |
+| Hybrid QSNN, local-Z/adjacent-ZZ readout (negative result) | 65.20% | 64.77% | 20 | 4,642 | 256 | 727.53 s | 1.562 GB |
+| Hybrid QSNN, joint-probability readout (selected) | **86.16%** | **86.10%** | 20 | 7,026 | 256 | 577.08 s | 1.562 GB |
+| Hybrid QSNN, frozen extractor/one block (negative result) | 62.62% | 62.19% | 20 | 2,586 trainable | 256 | 289.37 s | 1.561 GB |
+
+Batch sizes 32, 64, 128, and 256 were benchmarked with real forward/backward steps. Batch 256 was fastest for both the classical control (15,811 samples/s) and selected QSNN (3,757 samples/s); its QSNN benchmark peak was 1.837 GB. AMP was used for the Conv/LIF path, while quantum state evolution remained float32/complex64. These are single-seed validation-only development results, not official-test or multi-seed evidence. The selected model improves over T4-S8-Q12-B6 by 9.44 percentage points but remains 7.54 points below its compact classical-head control, identifying quantum encoding/readout as the remaining bottleneck.
+
+Reproduction (from the repository root, using the existing project environment):
+
+```powershell
+& "C:\Users\jafari.h\Desktop\ai_project\.venv\Scripts\python.exe" scripts/run_nmnist_hybrid_qsnn_seed42.py --mode all --classical-epochs 25 --quantum-epochs 25 --quantum-variant joint
+```
+
+### N-MNIST Quantum-Head V2 Optimization
+
+Keeping the 10-frame Conv/LIF frontend and 8D latent unchanged, a targeted Seed-42 validation-only search improved the quantum head from 86.16% to **92.60% validation accuracy** and **92.61% Macro-F1**. The selected 7,130-parameter model uses an identity-initialized learned angle projection, RY/RZ two-axis upload, two re-upload blocks, CNOT-ring entanglement, a learned measurement basis, and full 256-state probability readout. There is no classical bypass around the quantum circuit. Best epoch was 37; total initial-plus-continuation training time was 1,327.36 seconds at batch 256 on the RTX 4090. The official test partition was not accessed. Full screens, negative results, checkpoint details, and commands are recorded in `results/nmnist_hybrid_qsnn_seed42/quantum_head_v2_report.md`.
+
+### N-MNIST Frontend V3 Optimization
+
+Keeping the 10-bin timestamp-facing event adapter unchanged, three stronger Conv/LIF frontends tested whether the earlier 2x2 spatial summary was the remaining bottleneck. Classical screens reached 97.26% for a 12/24-channel 4x4-summary 16D latent, 97.42% for a 16/32-channel 4x4-summary 32D latent, and 97.46% for a much larger 8x8-summary 32D latent. The efficient 4x4 32D frontend was promoted because it was within 0.04 points of the 8x8 model with 72% fewer parameters.
+
+The promoted frontend reached **97.80% validation accuracy / 97.80% Macro-F1** with a small classical head. Connected through a learned 32-to-8 angle projection to the preserved `project_measure2` circuit, the resulting QSNN reached **97.06% validation accuracy / 97.06% Macro-F1** at epoch 37 with 40,762 parameters. There is no classical bypass around the quantum circuit. The official test partition was not accessed. Full evidence is in `results/nmnist_hybrid_qsnn_seed42/frontend_v3_report.md`.
+
 ### N-MNIST QSNN Seed-42 Timing-Attack Comparison
 
 The selected T4-S8-Q12-B6 checkpoint was evaluated on the same 100 clean-correct validation samples, with 10 samples per class. The official N-MNIST test partition was not instantiated. Both attacks preserved coordinates, polarity, labels, event counts, timestamp ordering, and the original clean time window; the perturbation bound was 2%, 5%, or 10% of each sample's inclusive clean duration. PGD used 20 surrogate-gradient steps, while derivative-free TEMP-DRIFT evaluated 1,600 candidates per sample, so their search budgets are not directly comparable.

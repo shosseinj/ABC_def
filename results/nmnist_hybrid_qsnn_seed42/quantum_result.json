@@ -1,0 +1,17 @@
+{
+  "name": "quantum",
+  "best_epoch": 20,
+  "stopping_epoch": 25,
+  "validation": {
+    "loss": 1.0266875,
+    "accuracy": 0.652,
+    "macro_f1": 0.6477309309133266
+  },
+  "parameters": 4642,
+  "batch_size": 256,
+  "training_seconds": 727.5328165999963,
+  "peak_gpu_bytes": 1561910784,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\quantum_best.pt",
+  "checkpoint_sha256": "1c81972004495419232340c3e9baa68dade4463810f4b09dfdf45a8cb397eee4",
+  "official_test_accessed": false
+}

@@ -1,0 +1,17 @@
+{
+  "name": "classical",
+  "best_epoch": 18,
+  "stopping_epoch": 23,
+  "validation": {
+    "loss": 0.215078125,
+    "accuracy": 0.937,
+    "macro_f1": 0.9366694090612999
+  },
+  "parameters": 4514,
+  "batch_size": 256,
+  "training_seconds": 284.1068949000037,
+  "peak_gpu_bytes": 1561866752,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\classical_best.pt",
+  "checkpoint_sha256": "420594beca400f095afa7c9750e67f0c0e51cf352ad0bd63a9c9b3b6b5f1a914",
+  "official_test_accessed": false
+}

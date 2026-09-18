@@ -1,0 +1,27 @@
+{
+  "frontend": "wide4",
+  "frontend_config": {
+    "channels": [
+      16,
+      32
+    ],
+    "spatial_size": 4,
+    "latent_dim": 32
+  },
+  "model_type": "classical",
+  "stage": "full",
+  "validation": {
+    "loss": 0.07237488374710083,
+    "accuracy": 0.978,
+    "macro_f1": 0.978022148742341
+  },
+  "best_epoch": 17,
+  "stopping_epoch": 23,
+  "parameters": 38122,
+  "runtime_seconds": 273.8734276999894,
+  "batch_size": 256,
+  "peak_gpu_bytes": 1793721856,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v3_wide4_classical_full_best.pt",
+  "checkpoint_sha256": "11e03f479bcc028882b28d865ec9ae291a05553bc4b1eeada9dd454a57bcfe0a",
+  "official_test_accessed": false
+}

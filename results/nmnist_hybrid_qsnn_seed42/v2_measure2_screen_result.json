@@ -1,0 +1,22 @@
+{
+  "variant": "measure2",
+  "stage": "screen",
+  "architecture": {
+    "n_blocks": 2,
+    "learned_measurement": true
+  },
+  "best_epoch": 12,
+  "stopping_epoch": 12,
+  "validation": {
+    "loss": 1.1656830047607423,
+    "accuracy": 0.6348,
+    "macro_f1": 0.6356200537856695
+  },
+  "parameters": 7042,
+  "runtime_seconds": 318.7389516999974,
+  "batch_size": 256,
+  "peak_gpu_bytes": 1770324480,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v2_measure2_screen_best.pt",
+  "checkpoint_sha256": "46e2faa11587e0898a9cb67f579ff563b0c6719cf7dd03b50809b1c3b4c23d5b",
+  "official_test_accessed": false
+}

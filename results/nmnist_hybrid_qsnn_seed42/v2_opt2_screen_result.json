@@ -1,0 +1,21 @@
+{
+  "variant": "opt2",
+  "stage": "screen",
+  "architecture": {
+    "n_blocks": 2
+  },
+  "best_epoch": 11,
+  "stopping_epoch": 12,
+  "validation": {
+    "loss": 1.0533114044189453,
+    "accuracy": 0.641,
+    "macro_f1": 0.6412308551721508
+  },
+  "parameters": 7026,
+  "runtime_seconds": 283.25576600000204,
+  "batch_size": 256,
+  "peak_gpu_bytes": 1770323968,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v2_opt2_screen_best.pt",
+  "checkpoint_sha256": "9a4948a49c0a8388c94011a4dae05c761f777b8263f908e1ba27028b78a2e498",
+  "official_test_accessed": false
+}

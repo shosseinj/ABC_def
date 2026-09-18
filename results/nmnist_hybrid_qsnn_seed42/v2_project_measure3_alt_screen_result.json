@@ -1,0 +1,25 @@
+{
+  "variant": "project_measure3_alt",
+  "stage": "screen",
+  "architecture": {
+    "n_blocks": 3,
+    "learned_projection": true,
+    "two_axis_encoding": true,
+    "learned_measurement": true,
+    "topology": "alternating"
+  },
+  "best_epoch": 12,
+  "stopping_epoch": 12,
+  "validation": {
+    "loss": 0.5004252609252929,
+    "accuracy": 0.8812,
+    "macro_f1": 0.8821448627618885
+  },
+  "parameters": 7154,
+  "runtime_seconds": 456.63458110000647,
+  "batch_size": 256,
+  "peak_gpu_bytes": 1770326016,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v2_project_measure3_alt_screen_best.pt",
+  "checkpoint_sha256": "4ef94b99942e1bdaf03d7dfbc2c9e237c55e9f20e6092bf66a7e057963d0aeb0",
+  "official_test_accessed": false
+}

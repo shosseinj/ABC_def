@@ -1,0 +1,25 @@
+{
+  "frontend": "wide4",
+  "model_type": "quantum",
+  "stage": "full",
+  "validation": {
+    "loss": 0.11435831871032714,
+    "accuracy": 0.9706,
+    "macro_f1": 0.970627254444528
+  },
+  "stored_validation": {
+    "loss": 0.11435831871032714,
+    "accuracy": 0.9706,
+    "macro_f1": 0.970627254444528
+  },
+  "validation_matches_checkpoint": true,
+  "best_epoch": 37,
+  "parameters": 40762,
+  "batch_size": 256,
+  "training_seconds_observed_until_external_timeout": 1200.0,
+  "peak_gpu_bytes_not_written_before_external_timeout": null,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v3_wide4_quantum_full_best.pt",
+  "checkpoint_sha256": "fbc8978785678f9d84b9a26507f59f638809f7e2ef961f889600c45807ca4237",
+  "official_test_accessed": false,
+  "note": "Training reached epoch 38; saved best checkpoint is epoch 37. Final run JSON was not written before timeout."
+}

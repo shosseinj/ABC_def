@@ -1,0 +1,27 @@
+{
+  "frontend": "spatial4",
+  "frontend_config": {
+    "channels": [
+      12,
+      24
+    ],
+    "spatial_size": 4,
+    "latent_dim": 16
+  },
+  "model_type": "classical",
+  "stage": "screen",
+  "validation": {
+    "loss": 0.10070570421218872,
+    "accuracy": 0.9726,
+    "macro_f1": 0.972568971586694
+  },
+  "best_epoch": 10,
+  "stopping_epoch": 12,
+  "parameters": 15354,
+  "runtime_seconds": 144.64632470000652,
+  "batch_size": 256,
+  "peak_gpu_bytes": 1770234368,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\v3_spatial4_classical_screen_best.pt",
+  "checkpoint_sha256": "e8afab59ee786e5458bc7c1960f7045d17e989d0a39bace840dce7b23a2f2daf",
+  "official_test_accessed": false
+}

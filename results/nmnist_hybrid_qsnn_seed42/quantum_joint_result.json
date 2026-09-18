@@ -1,0 +1,17 @@
+{
+  "name": "quantum_joint",
+  "best_epoch": 20,
+  "stopping_epoch": 25,
+  "validation": {
+    "loss": 0.892275,
+    "accuracy": 0.8616,
+    "macro_f1": 0.8610016460605499
+  },
+  "parameters": 7026,
+  "batch_size": 256,
+  "training_seconds": 577.0830301999958,
+  "peak_gpu_bytes": 1561922048,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\quantum_joint_best.pt",
+  "checkpoint_sha256": "119bd0f603baf0d9f189e8178c5f8a874263ba21f1a372aebec1f3a32e9ac0a6",
+  "official_test_accessed": false
+}

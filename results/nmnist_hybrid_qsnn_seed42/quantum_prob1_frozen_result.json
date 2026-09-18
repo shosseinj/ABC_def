@@ -1,0 +1,17 @@
+{
+  "name": "quantum_prob1_frozen",
+  "best_epoch": 20,
+  "stopping_epoch": 20,
+  "validation": {
+    "loss": 1.24435,
+    "accuracy": 0.6262,
+    "macro_f1": 0.6218672413516126
+  },
+  "parameters": 2586,
+  "batch_size": 256,
+  "training_seconds": 289.3710180000053,
+  "peak_gpu_bytes": 1560885248,
+  "checkpoint": "checkpoints\\nmnist_hybrid_qsnn_seed42\\quantum_prob1_frozen_best.pt",
+  "checkpoint_sha256": "7cac4d4700615cae9429a028fcb9dfaa37d6e43bb4c3466c418aa390939b58e4",
+  "official_test_accessed": false
+}
