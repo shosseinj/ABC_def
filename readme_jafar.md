@@ -1,5 +1,6 @@
 # Current Research Status — TEMP-DRIFT Benchmark / Prior QSNN Work
 
+> **Active autonomous workflow status:** Phase 0 and 0.5 PASS; Phase 0.75 BLOCKED by missing DVS-Gesture model/checkpoints, four CIFAR10-DVS seed checkpoints, N-MNIST event data, and locked PIL-PGD implementation. See Reports/diagnostic_blocker.md.
 > **v6 automated workflow:** Phase 0 `PASS`; Phase 0.5 `PASS` (6 contract tests); mandatory Phase 0.75 `BLOCKED`. A scientific decision is required because v6 does not resolve raw sensor timestamps versus the reference implementation's 10-step post-encoder capacity-1 threat model, and it omits Phase 2/3 beta grids. No v6 attack experiment has run. See `Reports/phase_0_75_report.md` and `Reports/benchmark_specification.md`.
 
 ## Benchmark phase status (Phase 0 audit, 2026-09-20)
