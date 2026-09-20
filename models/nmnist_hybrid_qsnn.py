@@ -24,7 +24,9 @@ class NMNISTLIFExtractor(nn.Module):
     def forward(self, frames):
         if frames.ndim != 5 or frames.shape[2:] != (2, 34, 34):
             raise ValueError("Expected [batch,time,2,34,34] N-MNIST frames.")
-        frames = frames.float().div_(8.0).clamp_(max=1.0)
+        # Do not mutate the caller-owned canonical event frame.  The same
+        # frame tensor is retained for serialization/audit after inference.
+        frames = frames.float().div(8.0).clamp(max=1.0)
         batch, steps = frames.shape[:2]
         first = self.pool(self.bn1(self.conv1(frames.flatten(0, 1))))
         first = first.unflatten(0, (batch, steps))
@@ -74,7 +76,8 @@ class NMNISTSpatialLIFExtractor(nn.Module):
     def forward(self, frames):
         if frames.ndim != 5 or frames.shape[2:] != (2, 34, 34):
             raise ValueError("Expected [batch,time,2,34,34] N-MNIST frames.")
-        frames = frames.float().div_(8.0).clamp_(max=1.0)
+        # Preserve the caller-owned canonical frame for audit and serialization.
+        frames = frames.float().div(8.0).clamp(max=1.0)
         batch, steps = frames.shape[:2]
         first = self.pool(self.bn1(self.conv1(frames.flatten(0, 1))))
         first = first.unflatten(0, (batch, steps))

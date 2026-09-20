@@ -391,6 +391,35 @@ def main():
     print("\n--- Phase 2: Running all matched comparisons ---")
     all_results = []
 
+    # Sample-level progress (independent from attack-result row count).
+    # A sample is considered fully processed in this non-resume runner only
+    # after both models have completed all configured epsilons/conditions.
+    total_samples = len(manifest["samples"])
+    completed_sample_ids = set()
+    sample_expected_records = {}
+    for item in manifest["samples"]:
+        _sid = int(item["sample_id"])
+        _expected = 0
+        for _model_name in models:
+            _relevant = {
+                k: v for k, v in budgets.items()
+                if not k.startswith("C_wallclock_") or _model_name in k
+            }
+            _expected += len(EPSILONS) * len(_relevant) * 2  # PGD + TEMP
+        sample_expected_records[_sid] = _expected
+
+    def print_sample_progress(current_sid=None):
+        completed = len(completed_sample_ids)
+        pct = (100.0 * completed / total_samples) if total_samples else 100.0
+        current_txt = f" | current_sample={current_sid}" if current_sid is not None else ""
+        print(
+            f"SAMPLE PROGRESS: {completed}/{total_samples} "
+            f"({pct:.2f}%) | remaining={total_samples - completed}{current_txt}",
+            flush=True,
+        )
+
+    print_sample_progress()
+
     for model_name, model in models.items():
         print(f"\n{'='*60}\nModel: {model_name}\n{'='*60}")
         relevant_budgets = {k: v for k, v in budgets.items() if not k.startswith("C_wallclock_") or model_name in k}
@@ -433,6 +462,22 @@ def main():
                         "budget_condition": budget_name, "budget_label": budget_def["label"],
                     })
                     all_results.append(temp_result)
+
+            # Check whether this sample has now accumulated every expected
+            # result row across all models/epsilons/conditions processed so far.
+            sample_rows = sum(1 for r in all_results if int(r["sample_id"]) == sid)
+            if (
+                sample_rows == sample_expected_records[sid]
+                and sid not in completed_sample_ids
+            ):
+                completed_sample_ids.add(sid)
+                pct = 100.0 * len(completed_sample_ids) / total_samples
+                print(
+                    f"[SAMPLE {len(completed_sample_ids)}/{total_samples} | "
+                    f"{pct:.2f}%] sample_id={sid} COMPLETE",
+                    flush=True,
+                )
+                print_sample_progress(current_sid=sid)
 
     # Phase 3: save raw results
     print("\n--- Phase 3: Saving results ---")

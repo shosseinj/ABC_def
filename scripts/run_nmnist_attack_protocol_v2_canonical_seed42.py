@@ -19,8 +19,13 @@ EPS=(0.0001,0.0025,0.01,0.05,0.10); ZERO=0.0
 
 def canonical_frames_torch(events,timestamps):
     if timestamps.ndim==1: timestamps=timestamps[None,:]
-    device,dtype=timestamps.device,timestamps.dtype; t0=float(events["t"][0]); duration=max(float(events["t"][-1])-t0+1,1.0)
-    u=(timestamps-t0)*10.0/duration; hard_bin=u.floor().long().clamp(0,9)
+    device,dtype=timestamps.device,timestamps.dtype
+    # Match the independent canonical/audit reconstruction exactly: event
+    # timing origin, duration, scale, and bin arithmetic are float32.
+    t0=torch.tensor(np.float32(events["t"][0]), device=device, dtype=dtype)
+    duration=torch.tensor(np.float32(max(float(events["t"][-1])-float(np.float32(events["t"][0]))+1.0,1.0)), device=device, dtype=dtype)
+    u=(timestamps-t0)*torch.tensor(np.float32(10), device=device, dtype=dtype)/duration
+    hard_bin=u.floor().long().clamp(0,9)
     centers=torch.arange(10,device=device,dtype=dtype)+0.5; weights=(1-(u[...,None]-centers).abs()).clamp_min(0)
     x=np.asarray(events["x"],dtype=np.int64);y=np.asarray(events["y"],dtype=np.int64);p=np.asarray(events["p"],dtype=np.int64)
     channel_np=p*(34*34)+y*34+x; channel=torch.as_tensor(channel_np,device=device,dtype=torch.long)[None,:].expand(len(timestamps),-1)
