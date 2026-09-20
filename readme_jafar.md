@@ -1,4 +1,31 @@
-# Current Research Status — QSNN / TEMP-DRIFT
+# Current Research Status — TEMP-DRIFT Benchmark / Prior QSNN Work
+
+## Benchmark phase status (Phase 0 audit, 2026-09-20)
+
+The active roadmap is now the **SNN + TEMP-DRIFT reference-paper benchmark** over N-MNIST, DVS-Gesture, and CIFAR10-DVS. QSNN is outside this benchmark scope. No new experiment was run during this Phase 0 audit.
+
+| Phase | Dataset / output | Status | Evidence and main gap |
+|---|---|---|---|
+| 0 | Framework preparation | **PASS** | Repository, checkpoints, saved results, attack code, and audit framework inspected; see `Reports/phase_0_report.md`. |
+| 0.5 | Benchmark contract | **PASS** | Native timestamp `B∞/B1/B0` projectors, independent auditor, frozen grids, and result schema implemented; contract-only tests passed. See `Reports/phase_0_5_report.md`. |
+| 1 | N-MNIST | **Partially reusable; benchmark not run** | Five SNN checkpoints and clean results exist. Existing attacks use epsilon/query or wall-clock conditions, not the required reference-paper `B∞`, `B1`, and `B0` grid. |
+| 2 | DVS-Gesture | **Not implemented** | Dataset directory exists, but no dataset-specific benchmark runner, SNN checkpoint, or attack result was found. |
+| 3 | CIFAR10-DVS | **Baseline preparation only** | Seed-42 checkpoints and validation artifacts exist; no required-budget TEMP-DRIFT benchmark or held-out attack evaluation was found. |
+| 4 | Reference comparison | **Not started** | `benchmark_comparison.csv` and `benchmark_comparison.md` do not exist. Reference-paper values have not been extracted or verified. |
+
+### Required benchmark budgets
+
+- N-MNIST: `B∞={1,2,3}`, `B1={500,750,1000,1500}`, `B0={200,300,400,600}`.
+- DVS-Gesture and CIFAR10-DVS: `B∞={1,2,3}`, `B1={2000,4000,8000,16000}`, `B0={1000,2000,4000,8000}`.
+- ASR must use clean-correct samples as its denominator, and every result must retain the realized `B∞`, `B1`, and `B0` values.
+
+### Readiness decision
+
+Phase 0.5 is complete. Phase 1 is now permitted by the v3 transition gate but has not started. Dataset integration must preserve event count, coordinates, polarity, preprocessing, and native timestamp units, and prior epsilon/query-budget results must not be relabeled as reference-budget results.
+
+---
+
+## Preserved prior research record
 
 **Repository state audited:** 2026-09-20. This README is an evidence-bounded status record based on the saved N-MNIST artifacts and completed experiments. The official N-MNIST test partition was not accessed for QSNN-v3 or the attack studies.
 
