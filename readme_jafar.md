@@ -1,5 +1,7 @@
 # Current Research Status — TEMP-DRIFT Benchmark / Prior QSNN Work
 
+> **v6 automated workflow:** Phase 0 `PASS`; Phase 0.5 `PASS` (6 contract tests); mandatory Phase 0.75 `BLOCKED`. A scientific decision is required because v6 does not resolve raw sensor timestamps versus the reference implementation's 10-step post-encoder capacity-1 threat model, and it omits Phase 2/3 beta grids. No v6 attack experiment has run. See `Reports/phase_0_75_report.md` and `Reports/benchmark_specification.md`.
+
 ## Benchmark phase status (Phase 0 audit, 2026-09-20)
 
 The active roadmap is now the **SNN + TEMP-DRIFT reference-paper benchmark** over N-MNIST, DVS-Gesture, and CIFAR10-DVS. QSNN is outside this benchmark scope. No new experiment was run during this Phase 0 audit.
@@ -8,7 +10,7 @@ The active roadmap is now the **SNN + TEMP-DRIFT reference-paper benchmark** ove
 |---|---|---|---|
 | 0 | Framework preparation | **PASS** | Repository, checkpoints, saved results, attack code, and audit framework inspected; see `Reports/phase_0_report.md`. |
 | 0.5 | Benchmark contract | **PASS** | Native timestamp `B∞/B1/B0` projectors, independent auditor, frozen grids, and result schema implemented; contract-only tests passed. See `Reports/phase_0_5_report.md`. |
-| 1 | N-MNIST | **Partially reusable; benchmark not run** | Five SNN checkpoints and clean results exist. Existing attacks use epsilon/query or wall-clock conditions, not the required reference-paper `B∞`, `B1`, and `B0` grid. |
+| 1 | N-MNIST | **BLOCKED at v4 preflight** | Five SNN checkpoints and clean results exist, but the `B1/B0` TEMP-DRIFT generation rules, joint monotonic budget projection, multi-seed manifest policy, and reference-table provenance are not frozen. No benchmark experiment was run. See `Reports/phase_1_NMNIST_final_report.md`. |
 | 2 | DVS-Gesture | **Not implemented** | Dataset directory exists, but no dataset-specific benchmark runner, SNN checkpoint, or attack result was found. |
 | 3 | CIFAR10-DVS | **Baseline preparation only** | Seed-42 checkpoints and validation artifacts exist; no required-budget TEMP-DRIFT benchmark or held-out attack evaluation was found. |
 | 4 | Reference comparison | **Not started** | `benchmark_comparison.csv` and `benchmark_comparison.md` do not exist. Reference-paper values have not been extracted or verified. |
@@ -21,7 +23,7 @@ The active roadmap is now the **SNN + TEMP-DRIFT reference-paper benchmark** ove
 
 ### Readiness decision
 
-Phase 0.5 is complete. Phase 1 is now permitted by the v3 transition gate but has not started. Dataset integration must preserve event count, coordinates, polarity, preprocessing, and native timestamp units, and prior epsilon/query-budget results must not be relabeled as reference-budget results.
+Phase 0.5 is complete. The v4 workflow entered Phase 1 and stopped at `STATUS: BLOCKED` before experiment launch. Dataset integration must jointly preserve event order, event count, coordinates, polarity, preprocessing, native timestamp units, and the active budget. Prior epsilon/query-budget results are not relabeled as reference-budget results.
 
 ---
 
