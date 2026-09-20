@@ -1,226 +1,268 @@
-# Clean Performance Benchmark Comparison
+# Current Research Status — QSNN / TEMP-DRIFT
 
-## Summary
+**Repository state audited:** 2026-09-20. This file is an evidence-bounded status record. A script or artifact is not treated as completed evidence unless its metadata, status, row counts, and audit fields support that conclusion.
 
-| Dataset | Model | Clean Accuracy | Re-audited | Status |
-|---|---|---:|---|---|
-| N-MNIST | SNN | 98.35% +/- 0.18% | No | Baseline complete |
-| N-MNIST | QSNN-v3 | 97.27% validation +/- 0.21% | No | Five-seed validation complete; official test pending |
-| SHD | SNN | 65.99% +/- 2.33% | **Yes - VERIFIED** | Baseline complete |
-| DVS Gesture | SNN | TBD | No | Pending |
-| CIFAR10-DVS | SNN | TBD | No | 64x64 resolution check complete; held-out test pending |
+## 1. Research goal
 
-## Dataset Availability
+The current main question is whether timing-domain perturbations of event timestamps can change classification in spiking and quantum-spiking neural networks, and how TEMP-DRIFT compares with a white-box timing PGD baseline under a reproducible, paired, clean-correct evaluation. The current central dataset is N-MNIST. Iris is the completed proof-of-concept line; SHD is a completed SNN baseline line; MNIST, DVS Gesture, and CIFAR10-DVS are supporting development or preparation lines.
 
-| Dataset | Status | Native partitions | Storage |
-|---|---|---|---|
-| N-MNIST | Existing | Train/test dataset already present | `data/nmnist/` |
-| SHD | READY | Train: 8,156; test: 2,264 | `data/shd/` |
-| DVS Gesture | READY | Train: 1,077; test: 264 | `data/dvs_gesture/` |
-| CIFAR10-DVS | READY | 10,000 samples; no official train/test partition | `data/cifar10_dvs/` |
+The repository does **not** currently support a general robustness or attack-superiority claim: the main N-MNIST attack evidence is single-seed, and the compute/query-budget-matched extension is incomplete.
 
-Availability reflects native event/spike loading only. No experimental train/validation splits, static-frame conversion, preprocessing, or training was performed in this preparation phase. Full verification metadata is in `results/neuromorphic_dataset_inventory.md`.
+## 2. Supervisor requirements represented by repository evidence
 
-## N-MNIST
+No separate supervisor instruction document was found in the repository. The following checklist is therefore limited to requirements encoded in the phase plans, protocol scripts, audit scripts, `AGENTS.md`, and saved reports.
 
-| Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
-|---|---|---|---|---:|---|
-| Time Is All It Takes | VGGSNN | SNN | Integer event grid | 99.71% | Literature reference |
-| Input-Specific and Universal Adversarial Attack... | Reported SNN | SNN | Full spiking input | 98.19% | Literature reference |
-| Ours | Our SNN | SNN | Native-event convolutional LIF SNN; 5 deterministic seeds | 98.35% +/- 0.18% | Internal baseline |
-| Ours | Our QSNN-v3 | QSNN | Frozen `wide4 + project_measure2`; five validation seeds | 97.27% +/- 0.21% validation | Main model; official test pending |
+| Requirement | Status | Evidence boundary |
+|---|---|---|
+| Establish clean SNN and QSNN baselines | **DONE for N-MNIST development scope** | SNN five-seed test artifact; QSNN-v3 five-seed validation artifact |
+| Use canonical event preprocessing and frozen splits | **DONE for corrected N-MNIST protocol** | `nmnist_snn_multiseed_split.json`; v3 audit |
+| Compare PGD and TEMP-DRIFT on common clean-correct samples | **DONE at the audited-record level; final matched comparison pending** | v3 manifest, per-sample CSV, and audit |
+| Preserve event invariants and audit serialized records | **DONE for v3** | 2,400/2,400 records audited; zero failures |
+| Match attack compute/query budgets | **IN PROGRESS / PARTIAL** | v2 calibration and budgets frozen; evaluation interrupted |
+| Produce final paired statistics for the budget-matched study | **NOT STARTED** | No final audit, summaries, comparisons, or report in the v2 directory |
+| Establish multi-seed N-MNIST attack evidence | **NOT STARTED** | v3 audit explicitly records `five_seed_campaign_started: false` |
+| Evaluate official N-MNIST QSNN test performance | **NOT STARTED** | QSNN artifacts state official test was not accessed |
+| Demonstrate a clean-preserving defense | **BLOCKED / NOT ESTABLISHED** | Existing defense experiments are historical validation studies, not a frozen reproducible robustness result |
 
-### Our N-MNIST SNN Multi-Seed Baseline
+## 3. Current model architecture
 
-The fixed clean protocol used 10 ordered, polarity-separated 34x34 event-count frames, a convolutional LIF SNN, the same deterministic train/validation split (`split_seed = 42`), and five model seeds. Checkpoints were selected by validation accuracy and then validation loss before one final evaluation per seed on the official test set.
+### N-MNIST SNN baseline — completed clean evaluation
 
-| Seed | Best Validation Accuracy | Final Test Accuracy | Macro-F1 | Best Epoch | Training Runtime |
-|---:|---:|---:|---:|---:|---:|
-| 42 | 98.24% | 98.49% | 98.48% | 11 | 615.05 s |
-| 123 | 97.96% | 98.14% | 98.13% | 8 | 508.07 s |
-| 777 | 98.36% | 98.53% | 98.52% | 13 | 662.11 s |
-| 2026 | 97.80% | 98.16% | 98.15% | 6 | 471.25 s |
-| 6543 | 98.30% | 98.41% | 98.40% | 11 | 931.77 s |
+The saved clean protocol uses native N-MNIST events converted to **10 ordered temporal bins × 2 polarity channels × 34 × 34**, with a convolutional LIF network. The fixed official-training split uses `split_seed=42`; five model seeds are 42, 123, 777, 2026, and 6543. Checkpoints are selected by validation accuracy, then validation loss. Parameter count is **25,482**.
 
-| Aggregate Metric | Mean +/- Sample SD |
+Aggregate clean results from `results/nmnist_snn_multiseed_summary.json`:
+
+| Metric | Mean ± sample SD | Evaluation |
+|---|---:|---|
+| Validation accuracy | 98.132% ± 0.241% | five seeds |
+| Official test accuracy | 98.346% ± 0.184% | one evaluation per seed |
+| Official test macro-F1 | 98.336% ± 0.186% | one evaluation per seed |
+
+The SNN clean campaign is marked `COMPLETED`. It has not been independently re-evaluated in the same way as the SHD campaign.
+
+### N-MNIST QSNN-v3 — frozen validation model
+
+The current frozen QSNN configuration is `wide4 + project_measure2`:
+
+- 10 event frames with polarity preserved;
+- `wide4` Conv/LIF frontend: 16 then 32 channels, 4×4 spatial summary, 32-dimensional latent;
+- learned `Linear(32, 8)` projection with no classical bypass;
+- two quantum re-upload blocks, two-axis encoding, ring entanglement, learned measurement basis;
+- AdamW, batch size 256, maximum 40 epochs, validation-accuracy-first checkpoint selection;
+- five seeds: 42, 123, 777, 2026, 6543;
+- parameter count: **40,762** for the promoted end-to-end model.
+
+Aggregate validation results from `results/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/summary.json`:
+
+| Metric | Mean ± sample SD |
 |---|---:|
-| Validation accuracy | 98.13% +/- 0.24% |
-| Test accuracy | 98.35% +/- 0.18% |
-| Macro-F1 | 98.34% +/- 0.19% |
+| Validation accuracy | 97.272% ± 0.212% |
+| Validation macro-F1 | 97.274% ± 0.212% |
 
-Parameter count: **25,482**. Re-audit: not yet independently re-evaluated.
+The official N-MNIST test partition was not accessed. Seed 42 training stopped at the command limit during epoch 38; its saved best epoch-37 checkpoint was separately re-evaluated and matched its stored validation metrics. This is valid validation evidence, not a completed official-test result.
 
-**Re-audit status**: Pending. Test results were evaluated once per seed after training. Independent re-evaluation script not yet implemented for N-MNIST.
+## 4. Clean model results and partitions
 
-### N-MNIST QSNN Seed-42 Development Ablation
+| Dataset/model | Current evidence | Status |
+|---|---|---|
+| N-MNIST SNN | Five-seed validation and official-test artifacts; 98.346% ± 0.184% test accuracy | **VALID; not independently re-audited** |
+| N-MNIST QSNN-v3 | Five-seed validation only; 97.272% ± 0.212% | **VALID validation evidence; official test not started** |
+| SHD SNN | Five-seed official-test campaign, then independent exact re-audit | **VALID / AUDITED** |
+| Iris QSNN | Earlier proof-of-concept and attack/defense phases | **Historical completed line; scope-specific** |
+| MNIST clean development | 4×4, 8×8/PCA and resolution/capacity studies | **Development evidence only** |
+| DVS Gesture | Dataset availability only; no saved internal model result | **NOT STARTED** |
+| CIFAR10-DVS | Seed-42 64×64 vs 128×128 validation resolution check | **VALID validation check; no held-out test** |
 
-This validation-only study reused the frozen SNN/QSNN official-training split (`split_seed = 42`, SHA-256 `a12176ce117ab9a85dd29d277901f8617ad2b5427dd3f976dbba436942f70198`). Native `x,y,t,p` events were reduced to ordered, polarity-preserving temporal and spatial channels; no static MNIST images were created. All runs used seed 42, angle encoding with data re-uploading, trainable RY/RZ gates, ring entanglement, Pauli-Z measurements, Adam (`learning_rate = 0.003`), batch size 256, and 15 epochs.
+## 5. Current N-MNIST attack protocol
 
-| Configuration | Temporal Bins | Spatial-Polarity Channels | Qubits | Blocks | Input Features | Parameters | Best Validation Accuracy | Best Validation Loss |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| T4-S8-Q8-B4 baseline | 4 | 8 | 8 | 4 | 32 | 154 | 69.56% | 1.018668 |
-| T8-S8-Q8-B4 | 8 | 8 | 8 | 4 | 64 | 154 | 48.32% | 1.587339 |
-| T10-S8-Q8-B4 | 10 | 8 | 8 | 4 | 80 | 154 | 36.84% | 1.806725 |
-| T4-S16-Q8-B4 | 4 | 16 | 8 | 4 | 64 | 154 | 36.76% | 1.820386 |
-| T4-S8-Q8-B6 | 4 | 8 | 8 | 6 | 32 | 186 | 75.88% | 0.850372 |
-| T4-S8-Q12-B6 | 4 | 8 | 12 | 6 | 32 | 274 | **76.72%** | **0.833559** |
+The current valid attack artifact is `results/nmnist_attack_protocol_v3_auditable_seed42/`. It supersedes the v2 canonical artifact for audited record storage while retaining the corrected preprocessing and attack definitions.
 
-The selected development candidate is **T4-S8-Q12-B6**, improving seed-42 validation accuracy by **7.16 percentage points** over the original sanity baseline. Its advantage over T4-S8-Q8-B6 is only 0.84 percentage points and requires multi-seed confirmation. The official N-MNIST test partition was not accessed; the current `Our QSNN-v3` entry reports validation evidence, while the official-test entry remains **TBD**. Full development artifacts are documented in `results/nmnist_qsnn_ablation_report.md`.
+- **Evaluation set:** 100 validation samples, 10 per class, selected from the frozen common-clean-correct manifest; official test was not instantiated.
+- **Epsilons:** 0, 0.01%, 0.25%, 1%, 5%, and 10% of each sample's inclusive clean duration `t_last - t_first + 1`.
+- **Projection:** timestamp perturbations remain within the clean time window, satisfy the per-event epsilon bound, and are projected to nondecreasing timestamps.
+- **Canonical representation:** event order `[time, polarity, y, x]`, 10 temporal bins, 2 polarity channels, 34×34 sensor grid.
+- **PGD:** 20 steps, step size `epsilon/5`, no random start, true-label cross-entropy objective; surrogate triangular soft bins with straight-through hard forward/soft gradient.
+- **TEMP-DRIFT-v2:** derivative-free timestamp search with 1,600 candidates per sample, initialization 600, four refinement generations of 250, elite preservation, differential mutation, boundary priority, fidelity weight 0.35, margin weight 0.65.
+- **ASR:** untargeted prediction flips among the 100 clean-correct samples.
+- **Accounting:** candidate evaluations and batched classifier/state calls are stored separately; record-level event, timestamp, frame, prediction, objective, and query invariants are checked.
 
-### N-MNIST Hybrid QSNN Seed-42 Development
+## 6. Corrected and independently audited attack results
 
-The T4-S8 adapter was replaced by 10 full-resolution, polarity-separated event-count frames. A lightweight two-stage Conv/LIF extractor produces an 8-value bounded latent, with one value assigned to each of eight qubits. The selected circuit uses two genuine data re-upload blocks with trainable RY/RZ rotations, CNOT-ring entanglement, full computational-basis probability measurement, and a linear 10-class readout. There is no classical bypass around the quantum circuit. The frozen 55,000/5,000 split and Seed 42 were retained; the official test partition was not instantiated.
+The v3 artifact contains **2,400/2,400 hash-verified, invariant-passing records**, with `failed_records=0`, `fully_audited=true`, and independent audit version `independent-posthoc-v1`.
 
-| Model | Best Validation Accuracy | Macro-F1 | Best Epoch | Parameters | Batch | Training Runtime | Peak GPU Allocated |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Compact latent + classical linear head | 93.70% | 93.67% | 18 | 4,514 | 256 | 284.11 s | 1.562 GB |
-| Hybrid QSNN, local-Z/adjacent-ZZ readout (negative result) | 65.20% | 64.77% | 20 | 4,642 | 256 | 727.53 s | 1.562 GB |
-| Hybrid QSNN, joint-probability readout (selected) | **86.16%** | **86.10%** | 20 | 7,026 | 256 | 577.08 s | 1.562 GB |
-| Hybrid QSNN, frozen extractor/one block (negative result) | 62.62% | 62.19% | 20 | 2,586 trainable | 256 | 289.37 s | 1.561 GB |
+### QSNN-v3, seed 42, 100 validation samples
 
-Batch sizes 32, 64, 128, and 256 were benchmarked with real forward/backward steps. Batch 256 was fastest for both the classical control (15,811 samples/s) and selected QSNN (3,757 samples/s); its QSNN benchmark peak was 1.837 GB. AMP was used for the Conv/LIF path, while quantum state evolution remained float32/complex64. These are single-seed validation-only development results, not official-test or multi-seed evidence. The selected model improves over T4-S8-Q12-B6 by 9.44 percentage points but remains 7.54 points below its compact classical-head control, identifying quantum encoding/readout as the remaining bottleneck.
+| Epsilon | PGD ASR | TEMP-DRIFT-v2 ASR |
+|---:|---:|---:|
+| 5% | 3% (3/100) | 4% (4/100) |
+| 10% | 3% (3/100) | 5% (5/100) |
 
-Reproduction (from the repository root, using the existing project environment):
+At 0%, 0.01%, 0.25%, and 1%, both attacks have 0/100 successes for QSNN. All v3 cells have 100% feasibility. These are single-seed validation results and are not a superiority or robustness claim.
 
-```powershell
-& "C:\Users\jafari.h\Desktop\ai_project\.venv\Scripts\python.exe" scripts/run_nmnist_hybrid_qsnn_seed42.py --mode all --classical-epochs 25 --quantum-epochs 25 --quantum-variant joint
+### SNN, seed 42, 100 validation samples
+
+| Epsilon | PGD ASR | TEMP-DRIFT-v2 ASR |
+|---:|---:|---:|
+| 5% | 0% (0/100) | 0% (0/100) |
+| 10% | 0% (0/100) | 1% (1/100) |
+
+The v3 audit confirms the stored ASR values, zero-epsilon identity controls, feasibility, hashes, canonical frames, timestamp bounds, and query accounting. It does not provide multi-seed attack replication.
+
+## 7. Statistical analysis
+
+Completed analyses include:
+
+- paired success/failure accounting is available from the v3 per-sample records, but no final significance report has been generated;
+- per-class and sample-level records in the audited v3 artifact;
+- Iris paired attack/defense and multi-seed validation analyses;
+- Phase 18–22 descriptive representation, sensitivity, and seed analyses;
+- SHD independent exact test re-audit.
+
+The N-MNIST v3 audit is a validity audit, not a significance test. The repository contains no completed significance analysis for the interrupted budget-matched v2 campaign. No claim of statistical significance is made here. Single-seed N-MNIST attack cells and incomplete budget matching limit inference.
+
+## 8. Compute/query budget matching — PARTIAL / NOT FINAL
+
+Target: `results/nmnist_budget_matched_comparison_v2_seed42/`, runner `scripts/run_nmnist_budget_matched_comparison_v2_seed42.py`.
+
+Calibration and budget artifacts were written before interruption:
+
+- calibration sample selection completed: 10 samples, one per class, selected without attack outcomes;
+- wall-clock calibration completed for QSNN and SNN;
+- both models were marked matched within the protocol's 10% median-runtime criterion;
+- frozen access conditions: TEMP budgets matching 21 PGD candidates and 41 PGD attack-internal forwards;
+- selected wall-clock budgets: QSNN `Q=4000`, SNN `Q=1600`.
+
+The actual evaluation matrix is:
+
+```text
+100 samples × 2 models × 2 epsilons × (2 access conditions + 2 wall-clock attack records)
+= 1,600 new records
 ```
 
-### N-MNIST Quantum-Head V2 Optimization
+Observed state at audit:
 
-Keeping the 10-frame Conv/LIF frontend and 8D latent unchanged, a targeted Seed-42 validation-only search improved the quantum head from 86.16% to **92.60% validation accuracy** and **92.61% Macro-F1**. The selected 7,130-parameter model uses an identity-initialized learned angle projection, RY/RZ two-axis upload, two re-upload blocks, CNOT-ring entanglement, a learned measurement basis, and full 256-state probability readout. There is no classical bypass around the quantum circuit. Best epoch was 37; total initial-plus-continuation training time was 1,327.36 seconds at batch 256 on the RTX 4090. The official test partition was not accessed. Full screens, negative results, checkpoint details, and commands are recorded in `results/nmnist_hybrid_qsnn_seed42/quantum_head_v2_report.md`.
+- 1,054 readable NPZ files exist;
+- 523 have `audit_passed=True`;
+- 531 have `audit_passed=False`;
+- no NPZ file failed the read/truncation check;
+- 546 matrix positions have no NPZ file;
+- no final `audit.json`, per-sample CSV, condition summaries, paired comparisons, or report exists;
+- `STATUS.json` remains `running` with `fully_audited=false`;
+- the runner has no safe resume/skip implementation and currently refuses an existing records directory.
 
-### N-MNIST Frontend V3 Optimization
+This experiment is **PARTIAL / NOT FINAL**. Its partial records must not be interpreted scientifically or combined into completed comparisons. The required next implementation step is a separately reviewed safe-resume change that validates existing files, accepts only complete audit-passing records, skips those keys, writes new files atomically, and emits live progress. No such change has been made by this audit.
 
-Keeping the 10-bin timestamp-facing event adapter unchanged, three stronger Conv/LIF frontends tested whether the earlier 2x2 spatial summary was the remaining bottleneck. Classical screens reached 97.26% for a 12/24-channel 4x4-summary 16D latent, 97.42% for a 16/32-channel 4x4-summary 32D latent, and 97.46% for a much larger 8x8-summary 32D latent. The efficient 4x4 32D frontend was promoted because it was within 0.04 points of the 8x8 model with 72% fewer parameters.
+## 9. Important bugs and corrections
 
-The promoted frontend reached **97.80% validation accuracy / 97.80% Macro-F1** with a small classical head. Connected through a learned 32-to-8 angle projection to the preserved `project_measure2` circuit, the resulting QSNN reached **97.06% validation accuracy / 97.06% Macro-F1** at epoch 37 with 40,762 parameters. There is no classical bypass around the quantum circuit. The official test partition was not accessed. Full evidence is in `results/nmnist_hybrid_qsnn_seed42/frontend_v3_report.md`.
+### N-MNIST representation mismatch — INVALID / SUPERSEDED
 
-### N-MNIST QSNN-v3 Frozen Five-Seed Validation
+Earlier N-MNIST attack outputs used a representation that did not match the native event-to-frame contract. The canonical v2 script explicitly records the previous results as invalid/debug-only due to representation mismatch. The correction centralized `canonical_frames_torch`, preserved polarity and event metadata, and added zero-control and canonical-frame checks. The v3 artifact supersedes the old debug campaign and is the audited source for current N-MNIST attack numbers.
 
-The architecture and training protocol were frozen after the Seed-42 frontend/quantum selection and applied without further architecture tuning to seeds **42, 123, 777, 2026, and 6543**. All runs used the same 55,000/5,000 training/validation split (`split_sha256 = a12176ce117ab9a85dd29d277901f8617ad2b5427dd3f976dbba436942f70198`), batch size 256, and validation-accuracy-first checkpoint selection. The official test partition was not accessed, and no attacks or defenses were run.
+### Attack objective and accounting ambiguity — corrected in v3
 
-| Seed | Validation Accuracy | Macro-F1 | Best Epoch | Runtime |
-|---:|---:|---:|---:|---:|
-| 42 | 97.06% | 97.06% | 37 | 1,200.00 s* |
-| 123 | 97.28% | 97.28% | 24 | 938.80 s |
-| 777 | 97.52% | 97.52% | 40 | 1,245.30 s |
-| 2026 | 97.44% | 97.44% | 38 | 1,251.55 s |
-| 6543 | 97.06% | 97.06% | 40 | 1,237.35 s |
+The corrected v3 records distinguish PGD true-label cross-entropy from TEMP-DRIFT true-class-margin optimization and separately store candidate evaluations, classifier calls, state calls, and verification forwards. Earlier results that do not identify these definitions are not current evidence for matched-compute claims.
 
-| Aggregate Metric | Mean +/- Sample SD |
-|---|---:|
-| Validation accuracy | **97.272% +/- 0.212%** |
-| Macro-F1 | **97.274% +/- 0.212%** |
-| Best epoch | 35.8 +/- not reported |
-| Runtime | 1,174.60 +/- 133.33 s |
+### Unequal attack budgets — limitation of the exploratory comparison
 
-The same-seed SNN validation reference was **98.132% +/- 0.241% accuracy** and **98.336% +/- 0.186% Macro-F1**. The QSNN-v3 minus SNN differences were **-0.860 percentage points** in validation accuracy and **-1.063 percentage points** in Macro-F1. These are descriptive validation comparisons on the same split, not official-test or robustness claims.
+The earlier 1,600-candidate TEMP-DRIFT versus PGD comparison is valid as an audited exploratory result, but it is not compute/query matched. The v2 budget-matched campaign was created to address this limitation and was interrupted before final completion.
 
-The Seed-42 execution was interrupted at the 1,200-second command limit during epoch 38; its saved best checkpoint was epoch 37. A separate checkpoint re-evaluation reproduced the stored Seed-42 validation loss, accuracy, and Macro-F1 exactly. Parameter count: **40,762**.
+### Interrupted QSNN seed-42 training — bounded use
 
-Frozen configuration and artifacts: `results/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/frozen_config.json`, `summary.json`, `summary.csv`, `report.md`, and `checkpoints/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/`.
+The QSNN seed-42 command stopped at its time limit during epoch 38. The saved best checkpoint and independent validation re-evaluation support validation reporting, but not a completed official-test result.
 
-Reproduction (from the repository root, using the existing project environment):
+### Historical defense/robustness results — not current success evidence
 
-```powershell
-& "C:\Users\jafari.h\Desktop\ai_project\.venv\Scripts\python.exe" scripts/run_nmnist_qsnn_v3_multiseed.py --seeds 42 123 777 2026 6543
-```
+The Iris and phase defense studies include negative or mixed validation results, seed sensitivity, and clean-performance tradeoffs. They do not establish a clean-preserving reproducible defense. They remain useful diagnostics but must not be presented as a successful defense.
 
-After an interrupted Seed-42 run, re-evaluate its saved checkpoint and regenerate the complete aggregate with:
+## 10. Audit and reproducibility status
 
-```powershell
-& "C:\Users\jafari.h\Desktop\ai_project\.venv\Scripts\python.exe" scripts/run_nmnist_qsnn_v3_multiseed.py --finalize-seed42
-& "C:\Users\jafari.h\Desktop\ai_project\.venv\Scripts\python.exe" scripts/run_nmnist_qsnn_v3_multiseed.py --aggregate-only
-```
+**Strongest current audit:** `results/nmnist_attack_protocol_v3_auditable_seed42/`.
 
-\*Seed-42 runtime is the observed command-limit duration, not a completed training runtime.
+It includes a 2,400-record manifest with SHA-256 hashes, per-sample CSV data, audit JSON, canonical preprocessing provenance, invariant checks, zero-epsilon controls, frozen split/checkpoint hashes, seed 42, and explicit test-access flags. The v2 interrupted directory has calibration and budget metadata but no completed final audit.
 
-### N-MNIST QSNN Seed-42 Timing-Attack Comparison
+The SHD test campaign has an independent exact re-audit in `results/shd_snn_test_reaudit.json` and `results/shd_snn_test_reaudit_report.md`. N-MNIST SNN clean test artifacts contain checkpoint hashes and one test evaluation per seed, but no equivalent independent re-audit artifact was found.
 
-The selected T4-S8-Q12-B6 checkpoint was evaluated on the same 100 clean-correct validation samples, with 10 samples per class. The official N-MNIST test partition was not instantiated. Both attacks preserved coordinates, polarity, labels, event counts, timestamp ordering, and the original clean time window; the perturbation bound was 2%, 5%, or 10% of each sample's inclusive clean duration. PGD used 20 surrogate-gradient steps, while derivative-free TEMP-DRIFT evaluated 1,600 candidates per sample, so their search budgets are not directly comparable.
+## 11. Current project status
 
-| Epsilon | Attack | Attack Success Rate | Attacked Accuracy | Mean 1-Fidelity | Mean Trace Distance | Feasibility |
-|---|---|---:|---:|---:|---:|---:|
-| 2% | PGD | 8% | 92% | 0.042797 | 0.177274 | 100% |
-| 2% | TEMP-DRIFT | **22%** | **78%** | 0.073987 | 0.263669 | 100% |
-| 5% | PGD | 32% | 68% | 0.274971 | 0.479222 | 100% |
-| 5% | TEMP-DRIFT | **76%** | **24%** | 0.422699 | 0.641635 | 100% |
-| 10% | PGD | 63% | 37% | 0.663569 | 0.792713 | 100% |
-| 10% | TEMP-DRIFT | **99%** | **1%** | 0.890414 | 0.942616 | 100% |
+| Work item | Status | Evidence / artifact |
+|---|---|---|
+| N-MNIST SNN clean baseline | **VALID** | `results/nmnist_snn_multiseed_summary.json` and per-seed test JSON |
+| N-MNIST QSNN-v3 clean validation | **VALID, validation-only** | `results/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/` |
+| Canonical N-MNIST attack protocol | **VALID / AUDITED** | v3 `STATUS.json`, `audit.json`, `records_manifest.json` |
+| Seed-42 PGD/TEMP attack cells | **VALID / AUDITED; not a final matched comparison** | v3 audit and per-sample CSV |
+| Budget-matched PGD/TEMP comparison | **PARTIAL / NOT FINAL** | v2 calibration, budgets, 1,054 readable NPZ files |
+| N-MNIST attack multi-seed replication | **NOT STARTED** | v3 audit says campaign not started |
+| QSNN official N-MNIST test | **NOT STARTED** | frozen config says test not accessed |
+| SHD SNN clean test | **VALID / AUDITED** | independent re-audit artifacts |
+| CIFAR10-DVS resolution check | **VALID validation-only** | resolution comparison JSON/history files |
+| DVS Gesture internal model | **NOT STARTED** | dataset inventory only |
+| Clean-preserving defense claim | **NOT ESTABLISHED** | negative/mixed defense artifacts |
 
-| Epsilon | PGD Only Successful | TEMP-DRIFT Only Successful | Both Successful | Both Robust |
-|---|---:|---:|---:|---:|
-| 2% | 0 | 14 | 8 | 78 |
-| 5% | 0 | 44 | 32 | 24 |
-| 10% | 0 | 36 | 63 | 1 |
+## 12. Remaining work
 
-Under this frozen exploratory protocol, TEMP-DRIFT had higher ASR than PGD at every tested epsilon, by 14, 44, and 36 percentage points respectively. This is single-seed validation evidence with unequal attack-search budgets; it does not establish a general robustness or attack-superiority claim. Full aggregate and per-sample artifacts are in `results/nmnist_attack_comparison_seed42_report.md`, `results/nmnist_attack_comparison_seed42.json`, `results/nmnist_attack_comparison_seed42.csv`, and `results/nmnist_attack_samples_seed42.csv`.
+### Immediate next step
 
-## DVS Gesture
+Implement and independently review safe resume for the interrupted v2 runner. The change must validate existing NPZ metadata and invariants, accept only complete `audit_passed=True` records, preserve all valid files, avoid treating audit-failed/partial files as complete, write atomically, and produce live progress. Do not resume until this code is reviewed.
 
-| Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
-|---|---|---|---|---:|---|
-| Time Is All It Takes | VGGSNN | SNN | Integer event grid | 94.79% | Literature reference |
-| Input-Specific and Universal Adversarial Attack... | Reported SNN | SNN | Full spiking input | 86.36% | Literature reference |
-| Ours | Our SNN | SNN | Same internal split / preprocessing | TBD | Internal baseline |
-| Ours | Our QSNN | QSNN | Quantum temporal encoding | TBD | Main model |
+### Required before a supervisor report or paper
 
-## SHD
+1. Complete the budget-matched v2 matrix under the frozen protocol.
+2. Run the final record audit and generate condition summaries and paired comparisons.
+3. Reconcile any audit-failed records rather than silently counting them.
+4. Report paired outcomes with explicit denominators, including both-success, both-robust, and one-attack-only outcomes.
+5. Decide whether multi-seed N-MNIST attack replication is required for the intended claim; the current repository has not started it.
+6. If QSNN clean official-test performance is required, freeze the test protocol before accessing the partition.
 
-| Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
-|---|---|---|---|---:|---|
-| Input-Specific and Universal Adversarial Attack... | Reported SNN | SNN | Neuromorphic audio spikes | 76.59% | Literature reference |
-| Ours | Our SNN | SNN | Native temporal SHD recurrent LIF SNN; 5 deterministic seeds | 65.99% +/- 2.33% | Internal baseline |
-| Ours | Our QSNN | QSNN | Quantum temporal encoding | TBD | Main model |
+### Later robustness work
 
-### Our SHD SNN Multi-Seed Baseline
+Multi-seed attacks, additional model/checkpoint seeds, and any defense evaluation should follow only after the corrected single-seed budget-matched evidence is complete. No robustness claim should be generalized from the current partial or single-seed attack artifacts.
 
-The current clean protocol uses all 700 cochlear input channels, 100 ordered binary spike-occupancy bins over a 1.4-second window, and no normalization. A compact recurrent LIF network (`Linear(700,128)-recurrent-LIF(128)-Linear(128,20)`) uses one stratified validation split (`split_seed = 42`) and five deterministic model seeds. Training used a total budget of 350 epochs with `ReduceLROnPlateau(mode="max", factor=0.5, patience=10, min_lr=1e-5)` and early-stopping patience 40.
+## 13. Recommended execution order
 
-| Seed | Best Validation | Final Test | Macro-F1 | Best Epoch | Stopping Epoch | LR Reductions | Final LR | Extension Runtime |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 42 | 78.86% | 65.77% | 64.68% | 271 | 311 | 7 | 0.000010 | 878.26 s |
-| 123 | 81.68% | 69.79% | 69.11% | 217 | 257 | 5 | 0.00003125 | 567.76 s |
-| 777 | 77.39% | 66.21% | 65.63% | 232 | 272 | 7 | 0.000010 | 651.97 s |
-| 2026 | 76.90% | 64.00% | 63.20% | 233 | 273 | 6 | 0.000015625 | 655.77 s |
-| 6543 | 82.05% | 64.18% | 63.90% | 190 | 230 | 5 | 0.00003125 | 432.93 s |
+1. Review and test the safe-resume implementation without launching attacks.
+2. Validate the existing v2 records and classify audit-passing, audit-failing, missing, and corrupt keys.
+3. Resume only missing/invalid matrix keys under the frozen calibration and budget artifacts.
+4. Run the final v2 audit and generate statistical summaries.
+5. Independently review the completed comparison and its paired denominators.
+6. Only then plan multi-seed attack replication or official-test evaluation.
 
-| Aggregate Metric | Mean +/- Sample SD |
-|---|---:|
-| Validation accuracy | 79.38% +/- 2.39% |
-| Test accuracy | 65.99% +/- 2.33% |
-| Macro-F1 | 65.30% +/- 2.31% |
+## 14. Key files
 
-Parameter count: **108,692**. Each validation-selected checkpoint was evaluated once on the official SHD test partition after training and model selection were complete.
+### Current N-MNIST evidence
 
-**Re-audit status**: All 5 checkpoints independently re-evaluated on the official SHD test partition. Every seed produced an exact match (zero difference in accuracy, macro-F1, loss, and confusion matrices). Verdict: **VERIFIED**. Evidence: `results/shd_snn_test_reaudit.json`, `results/shd_snn_test_reaudit_report.md`.
+- `scripts/run_nmnist_snn_multiseed.py`
+- `scripts/run_nmnist_qsnn_v3_multiseed.py`
+- `scripts/run_nmnist_attack_protocol_v3_auditable_seed42.py`
+- `scripts/run_nmnist_attack_protocol_v2_canonical_seed42.py`
+- `scripts/run_nmnist_common_attack_protocol_seed42.py`
+- `scripts/run_nmnist_budget_matched_comparison_v2_seed42.py`
+- `scripts/audit_nmnist_attack_protocol_v3_auditable_seed42.py`
+- `scripts/audit_nmnist_attack_pipeline_seed42.py`
+- `results/nmnist_snn_multiseed_summary.json`
+- `results/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/`
+- `results/nmnist_attack_protocol_v3_auditable_seed42/`
+- `results/nmnist_budget_matched_comparison_v2_seed42/`
 
-## CIFAR10-DVS
+### Splits, checkpoints, and tests
 
-| Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
-|---|---|---|---|---:|---|
-| Time Is All It Takes | SpikingResformer | SNN | Integer event grid | 82.90% | Literature reference |
-| Ours | Our SNN | SNN | 10-bin polarity-separated 64x64 event frames; validation-only | TBD | Internal baseline; resolution check ACCEPT |
-| Ours | Our QSNN | QSNN | Quantum temporal encoding | TBD | Optional extension |
+- `results/nmnist_snn_multiseed_split.json`
+- `results/nmnist_clean_seed42_preprocessing.json`
+- `results/nmnist_attack_protocol_v3_auditable_seed42/common_clean_correct_manifest.json`
+- `checkpoints/nmnist_snn_multiseed/`
+- `checkpoints/nmnist_hybrid_qsnn_seed42/nmnist_qsnn_v3_multiseed/`
+- `tests/test_nmnist_clean.py`
+- `tests/test_nmnist_attack_auditor.py`
+- `tests/test_nmnist_canonical_attack_preprocessing.py`
+- `tests/test_nmnist_temp_drift_v2.py`
 
-### CIFAR10-DVS 64x64 Resolution Check
+### Broader completed evidence
 
-The comparison reused the frozen stratified split (`split_seed = 42`, SHA-256 `629571c70b6202629206d7a449a41e02f124efba2cf469f966c19ea4cdf288b8`) with 8,000 training and 1,000 validation samples; the 1,000-sample held-out partition was not accessed. Both runs used seed 42, 10 temporal bins, separate polarity channels, additive event counts, per-sample max normalization, the same convolutional LIF pattern and LIF settings, AdamW, `ReduceLROnPlateau` stepped on validation accuracy, and the same checkpoint-selection rule. The 64x64 representation mapped native coordinates with deterministic floor division before accumulation.
+- `results/shd_snn_test_reaudit.json`
+- `results/shd_snn_test_reaudit_report.md`
+- `results/phase18_results.md` through `results/phase22_results.md`
+- `results/phase22_results.md`
+- `results/cifar10_dvs_resolution_comparison_seed42.json`
 
-The earlier 128x128 run was interrupted and its saved checkpoint metadata did not match the observed run log, so both resolutions were rerun under the same cached-frame protocol. For reporting, "substantially faster" was operationalized as at least 1.25x mean epoch speedup.
+## Bottom line
 
-| Resolution | Best Validation Accuracy | Best Validation Loss | Best Epoch | Mean Epoch Runtime | Peak GPU Allocated | Parameters | Throughput |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 128x128 | 50.40% | 1.9122 | 6 | 18.5 s | 0.820 GB | 187,402 | 433.6 samples/s |
-| 64x64 | **54.80%** | **1.8448** | 21 | **14.2 s** | **0.253 GB** | 64,522 | **564.4 samples/s** |
-
-The 64x64 run was 1.31x faster, used less peak allocated GPU memory, and improved validation accuracy by 4.40 percentage points. `scheduler.step(validation_accuracy)` was called 36 times. Selection verdict: **CIFAR10-DVS 64x64: ACCEPT**. No held-out test evaluation or 350-epoch training was performed in this comparison.
-
-Evidence and artifacts: `results/cifar10_dvs_resolution_comparison_seed42.json`, `results/cifar10_dvs_resolution_128x128_seed42_history.csv`, `results/cifar10_dvs_resolution_64x64_seed42_history.csv`, and the corresponding LR-history and checkpoint files.
-
-## Iris
-
-| Source | Model | Model Type | Input / Setting | Clean Accuracy | Role |
-|---|---|---|---|---:|---|
-| Ours | Our QSNN | QSNN | TTFS | 94.67% | Proof-of-concept |
+The repository currently contains a completed and independently audited **single-seed canonical N-MNIST attack protocol**, completed clean SNN evidence, and validation-only QSNN-v3 evidence. The scientifically important compute/query-budget-matched comparison is **interrupted and not final**. No final matched-comparison statistics or multi-seed N-MNIST attack evidence currently exists.
